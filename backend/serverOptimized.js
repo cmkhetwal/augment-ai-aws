@@ -20,6 +20,10 @@ const pingService = require('./services/pingService');
 const metricsService = require('./services/metricsService');
 const portScanService = require('./services/portScanService');
 const notificationService = require('./services/notificationService');
+const authService = require('./services/authService');
+
+// Import routes
+const authRoutes = require('./routes/auth');
 
 const app = express();
 const server = http.createServer(app);
@@ -29,6 +33,9 @@ const PORT = process.env.PORT || 3001;
 
 app.use(cors());
 app.use(express.json());
+
+// Authentication routes
+app.use('/api/auth', authRoutes);
 
 let connectedClients = new Set();
 let monitoringData = {
@@ -83,7 +90,7 @@ function broadcastToClients(data) {
 // Enhanced API endpoints
 
 // Get instances with pagination, sorting, and search (multi-region)
-app.get('/api/instances', async (req, res) => {
+app.get('/api/instances', authService.authenticateToken.bind(authService), async (req, res) => {
   try {
     const {
       page = 1,
@@ -206,7 +213,7 @@ app.get('/api/instances', async (req, res) => {
 });
 
 // Enhanced dashboard endpoint with sorting by resource usage
-app.get('/api/dashboard', async (req, res) => {
+app.get('/api/dashboard', authService.authenticateToken.bind(authService), async (req, res) => {
   try {
     const { sortBy = 'usage', limit = 50 } = req.query;
     
@@ -256,7 +263,7 @@ app.get('/api/dashboard', async (req, res) => {
 });
 
 // Search endpoint (multi-region)
-app.get('/api/search', async (req, res) => {
+app.get('/api/search', authService.authenticateToken.bind(authService), async (req, res) => {
   try {
     const { q, type = 'all', region = 'all' } = req.query;
     
@@ -318,7 +325,7 @@ app.get('/api/search', async (req, res) => {
 });
 
 // Regions endpoint
-app.get('/api/regions', async (req, res) => {
+app.get('/api/regions', authService.authenticateToken.bind(authService), async (req, res) => {
   try {
     const regionStats = awsService.getRegionStats();
     res.json(regionStats);
@@ -329,7 +336,7 @@ app.get('/api/regions', async (req, res) => {
 });
 
 // Refresh regions endpoint
-app.post('/api/regions/refresh', async (req, res) => {
+app.post('/api/regions/refresh', authService.authenticateToken.bind(authService), authService.requirePermission('write'), async (req, res) => {
   try {
     const activeRegions = await awsService.refreshActiveRegions();
     res.json({ 
@@ -344,11 +351,11 @@ app.post('/api/regions/refresh', async (req, res) => {
 });
 
 // Notification configuration endpoints
-app.get('/api/notifications/config', (req, res) => {
+app.get('/api/notifications/config', authService.authenticateToken.bind(authService), (req, res) => {
   res.json(notificationService.getConfig());
 });
 
-app.post('/api/notifications/config', (req, res) => {
+app.post('/api/notifications/config', authService.authenticateToken.bind(authService), authService.requirePermission('manage_notifications'), (req, res) => {
   try {
     notificationService.updateConfig(req.body);
     res.json({ success: true, message: 'Configuration updated' });
@@ -357,7 +364,7 @@ app.post('/api/notifications/config', (req, res) => {
   }
 });
 
-app.post('/api/notifications/test', async (req, res) => {
+app.post('/api/notifications/test', authService.authenticateToken.bind(authService), authService.requirePermission('manage_notifications'), async (req, res) => {
   try {
     const testAlert = {
       instanceId: 'test-instance',
@@ -378,7 +385,7 @@ app.post('/api/notifications/test', async (req, res) => {
 });
 
 // Cache management endpoints
-app.post('/api/cache/clear', (req, res) => {
+app.post('/api/cache/clear', authService.authenticateToken.bind(authService), authService.requirePermission('admin'), (req, res) => {
   try {
     awsService.clearCache();
     res.json({ success: true, message: 'Cache cleared' });
@@ -387,7 +394,7 @@ app.post('/api/cache/clear', (req, res) => {
   }
 });
 
-app.get('/api/cache/stats', (req, res) => {
+app.get('/api/cache/stats', authService.authenticateToken.bind(authService), authService.requirePermission('admin'), (req, res) => {
   try {
     const stats = awsService.getCacheStats();
     res.json(stats);
@@ -397,7 +404,7 @@ app.get('/api/cache/stats', (req, res) => {
 });
 
 // Legacy endpoints for backward compatibility
-app.get('/api/ping/:instanceId', async (req, res) => {
+app.get('/api/ping/:instanceId', authService.authenticateToken.bind(authService), async (req, res) => {
   try {
     const { instanceId } = req.params;
     const instance = monitoringData.instances.find(i => i.InstanceId === instanceId);
@@ -412,7 +419,7 @@ app.get('/api/ping/:instanceId', async (req, res) => {
   }
 });
 
-app.get('/api/metrics/:instanceId', async (req, res) => {
+app.get('/api/metrics/:instanceId', authService.authenticateToken.bind(authService), async (req, res) => {
   try {
     const { instanceId } = req.params;
     const { refresh = 'false' } = req.query;
@@ -451,7 +458,7 @@ app.get('/api/metrics/:instanceId', async (req, res) => {
   }
 });
 
-app.get('/api/ports/:instanceId', async (req, res) => {
+app.get('/api/ports/:instanceId', authService.authenticateToken.bind(authService), async (req, res) => {
   try {
     const { instanceId } = req.params;
     const ports = monitoringData.openPorts[instanceId] || [];
