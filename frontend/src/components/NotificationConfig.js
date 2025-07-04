@@ -27,6 +27,7 @@ const NotificationConfig = () => {
     slack: { enabled: false, channel: '#aws-monitoring' },
     googleChat: { enabled: false }
   });
+  const [formValues, setFormValues] = useState({});
 
   // Load current configuration
   useEffect(() => {
@@ -38,11 +39,17 @@ const NotificationConfig = () => {
       const response = await fetch('/api/notifications/config');
       const data = await response.json();
       setConfig(data);
+      setFormValues(data);
       form.setFieldsValue(data);
     } catch (error) {
       console.error('Error loading configuration:', error);
       message.error('Failed to load notification configuration');
     }
+  };
+
+  // Handle form values change
+  const handleFormValuesChange = (changedValues, allValues) => {
+    setFormValues(allValues);
   };
 
   const handleSave = async (values) => {
@@ -115,6 +122,7 @@ const NotificationConfig = () => {
           layout="vertical"
           onFinish={handleSave}
           initialValues={config}
+          onValuesChange={handleFormValuesChange}
         >
           <Tabs defaultActiveKey="slack" type="card">
             {/* Slack Configuration */}
@@ -154,7 +162,7 @@ const NotificationConfig = () => {
                     >
                       <Input
                         placeholder="https://hooks.slack.com/services/..."
-                        disabled={!form.getFieldValue(['slack', 'enabled'])}
+                        disabled={!formValues.slack?.enabled}
                       />
                     </Form.Item>
                   </Col>
@@ -165,7 +173,7 @@ const NotificationConfig = () => {
                     >
                       <Input
                         placeholder="#aws-monitoring"
-                        disabled={!form.getFieldValue(['slack', 'enabled'])}
+                        disabled={!formValues.slack?.enabled}
                       />
                     </Form.Item>
                   </Col>
@@ -176,7 +184,7 @@ const NotificationConfig = () => {
                     >
                       <Input
                         placeholder="AWS Monitor Bot"
-                        disabled={!form.getFieldValue(['slack', 'enabled'])}
+                        disabled={!formValues.slack?.enabled}
                       />
                     </Form.Item>
                   </Col>
@@ -236,7 +244,7 @@ const NotificationConfig = () => {
                     >
                       <Input
                         placeholder="https://chat.googleapis.com/v1/spaces/..."
-                        disabled={!form.getFieldValue(['googleChat', 'enabled'])}
+                        disabled={!formValues.googleChat?.enabled}
                       />
                     </Form.Item>
                   </Col>
@@ -290,7 +298,7 @@ const NotificationConfig = () => {
                     >
                       <Input
                         placeholder="smtp.gmail.com"
-                        disabled={!form.getFieldValue(['email', 'enabled'])}
+                        disabled={!formValues.email?.enabled}
                       />
                     </Form.Item>
                   </Col>
@@ -302,7 +310,7 @@ const NotificationConfig = () => {
                       <InputNumber
                         placeholder="587"
                         style={{ width: '100%' }}
-                        disabled={!form.getFieldValue(['email', 'enabled'])}
+                        disabled={!formValues.email?.enabled}
                       />
                     </Form.Item>
                   </Col>
@@ -312,7 +320,7 @@ const NotificationConfig = () => {
                       label="Use SSL/TLS"
                       valuePropName="checked"
                     >
-                      <Switch disabled={!form.getFieldValue(['email', 'enabled'])} />
+                      <Switch disabled={!formValues.email?.enabled} />
                     </Form.Item>
                   </Col>
                 </Row>
@@ -325,7 +333,7 @@ const NotificationConfig = () => {
                     >
                       <Input
                         placeholder="your-email@gmail.com"
-                        disabled={!form.getFieldValue(['email', 'enabled'])}
+                        disabled={!formValues.email?.enabled}
                       />
                     </Form.Item>
                   </Col>
@@ -336,7 +344,7 @@ const NotificationConfig = () => {
                     >
                       <Input.Password
                         placeholder="Your app password"
-                        disabled={!form.getFieldValue(['email', 'enabled'])}
+                        disabled={!formValues.email?.enabled}
                       />
                     </Form.Item>
                   </Col>
@@ -350,7 +358,7 @@ const NotificationConfig = () => {
                     >
                       <Input
                         placeholder="aws-monitor@yourcompany.com"
-                        disabled={!form.getFieldValue(['email', 'enabled'])}
+                        disabled={!formValues.email?.enabled}
                       />
                     </Form.Item>
                   </Col>
@@ -362,7 +370,7 @@ const NotificationConfig = () => {
                       <TextArea
                         placeholder="admin@yourcompany.com, devops@yourcompany.com"
                         rows={2}
-                        disabled={!form.getFieldValue(['email', 'enabled'])}
+                        disabled={!formValues.email?.enabled}
                       />
                     </Form.Item>
                   </Col>
