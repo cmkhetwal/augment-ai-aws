@@ -1,0 +1,122 @@
+version: '3.8'
+
+services:
+  mongodb:
+    image: mongo:7.0
+    networks:
+      - monitoring-network
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: admin
+      MONGO_INITDB_ROOT_PASSWORD: password123
+    volumes:
+      - mongodb_data:/data/db
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+    ports:
+      - "27017:27017"
+
+  backend:
+    image: aws-monitor-backend:latest
+    networks:
+      - monitoring-network
+    environment:
+      - NODE_ENV=production
+      - MONGODB_URI=mongodb://admin:password123@mongodb:27017/aws-monitor?authSource=admin
+      - AWS_REGION=${AWS_REGION:-us-east-1}
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
+      - MAX_INSTANCES=${MAX_INSTANCES:-500}
+      - MAX_CONCURRENT_REQUESTS=${MAX_CONCURRENT_REQUESTS:-15}
+      - REQUEST_DELAY=${REQUEST_DELAY:-200}
+      - BATCH_SIZE=${BATCH_SIZE:-30}
+      - EMAIL_NOTIFICATIONS_ENABLED=${EMAIL_NOTIFICATIONS_ENABLED:-false}
+      - SMTP_HOST=${SMTP_HOST}
+      - SMTP_PORT=${SMTP_PORT}
+      - SMTP_USER=${SMTP_USER}
+      - SMTP_PASS=${SMTP_PASS}
+      - FROM_EMAIL=${FROM_EMAIL}
+      - TO_EMAILS=${TO_EMAILS}
+      - SLACK_NOTIFICATIONS_ENABLED=${SLACK_NOTIFICATIONS_ENABLED:-false}
+      - SLACK_WEBHOOK_URL=${SLACK_WEBHOOK_URL}
+      - SLACK_CHANNEL=${SLACK_CHANNEL}
+      - SLACK_USERNAME=${SLACK_USERNAME}
+      - GOOGLE_CHAT_NOTIFICATIONS_ENABLED=${GOOGLE_CHAT_NOTIFICATIONS_ENABLED:-false}
+      - GOOGLE_CHAT_WEBHOOK_URL=${GOOGLE_CHAT_WEBHOOK_URL}
+    depends_on:
+      - mongodb
+    deploy:
+      replicas: 3
+      update_config:
+        parallelism: 1
+        delay: 10s
+        failure_action: rollback
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 4G
+        reservations:
+          cpus: '1.0'
+          memory: 2G
+    ports:
+      - "3001:3001"
+
+  frontend:
+    image: aws-monitor-frontend:latest
+    networks:
+      - monitoring-network
+    depends_on:
+      - backend
+    deploy:
+      replicas: 2
+      update_config:
+        parallelism: 1
+        delay: 5s
+        failure_action: rollback
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 1G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+    ports:
+      - "3000:80"
+
+  nginx-proxy:
+    image: nginx:alpine
+    networks:
+      - monitoring-network
+    volumes:
+      - ./nginx-loadbalancer.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - frontend
+      - backend
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+    ports:
+      - "80:80"
+      - "443:443"
+
+volumes:
+  mongodb_data:
+    driver: local
+
+networks:
+  monitoring-network:
+    driver: overlay
+    attachable: true
