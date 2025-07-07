@@ -15,7 +15,7 @@ class User {
       if (!this.users.has(adminEmail)) {
         const saltRounds = 12;
         const hashedPassword = await bcrypt.hash('admin', saltRounds);
-        
+
         const adminUser = {
           id: crypto.randomUUID(),
           email: adminEmail,
@@ -24,7 +24,7 @@ class User {
           firstName: 'Administrator',
           lastName: 'User',
           role: 'admin',
-          permissions: ['read', 'write', 'admin', 'delete', 'manage_users'],
+          permissions: ['read', 'write', 'admin', 'delete', 'manage_users', 'manage_notifications', 'manage_settings'],
           isActive: true,
           mustChangePassword: true, // Force password change on first login
           createdAt: new Date(),
@@ -35,9 +35,41 @@ class User {
 
         this.users.set(adminEmail, adminUser);
         console.log('Default admin user created: admin@admin.com / admin (must change password on first login)');
+      } else {
+        // Update existing admin user permissions if they're missing new permissions
+        this.updateAdminPermissions();
       }
     } catch (error) {
       console.error('Error creating default admin user:', error);
+    }
+  }
+
+  // Update admin user permissions (migration function)
+  updateAdminPermissions() {
+    try {
+      const adminEmail = 'admin@admin.com';
+      const adminUser = this.users.get(adminEmail);
+
+      if (adminUser && adminUser.role === 'admin') {
+        const requiredAdminPermissions = ['read', 'write', 'admin', 'delete', 'manage_users', 'manage_notifications', 'manage_settings'];
+        let updated = false;
+
+        // Check if admin user is missing any required permissions
+        for (const permission of requiredAdminPermissions) {
+          if (!adminUser.permissions.includes(permission)) {
+            adminUser.permissions.push(permission);
+            updated = true;
+          }
+        }
+
+        if (updated) {
+          adminUser.updatedAt = new Date();
+          this.users.set(adminEmail, adminUser);
+          console.log('Admin user permissions updated with missing permissions');
+        }
+      }
+    } catch (error) {
+      console.error('Error updating admin permissions:', error);
     }
   }
 
