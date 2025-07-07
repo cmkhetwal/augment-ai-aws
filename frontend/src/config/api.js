@@ -1,7 +1,16 @@
-// API Configuration
-const API_BASE_URL = process.env.NODE_ENV === 'production' 
-  ? 'http://localhost:3001' 
-  : '';
+// API Configuration - Dynamic URL detection
+const getApiBaseUrl = () => {
+  // In production, use the current host with port 3001
+  // In development, use the proxy configured in package.json
+  if (process.env.NODE_ENV === 'production') {
+    const protocol = window.location.protocol;
+    const hostname = window.location.hostname;
+    return `${protocol}//${hostname}:3001`;
+  }
+  return '';
+};
+
+const API_BASE_URL = getApiBaseUrl();
 
 export const API_ENDPOINTS = {
   LOGIN: `${API_BASE_URL}/api/auth/login`,

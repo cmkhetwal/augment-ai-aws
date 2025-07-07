@@ -3,8 +3,10 @@ class WebSocketService {
     this.ws = null;
     // WebSocket URL should point to backend server
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-    const wsHost = process.env.NODE_ENV === 'production' ? 'localhost:3001' : window.location.host;
-    this.url = `${protocol}//${wsHost}/ws`;
+    const hostname = window.location.hostname;
+    const port = process.env.NODE_ENV === 'production' ? '3001' : window.location.port;
+    const wsHost = `${hostname}:${port}`;
+    this.url = `${protocol}//${wsHost}`;
     this.reconnectInterval = 5000;
     this.reconnectAttempts = 0;
     this.maxReconnectAttempts = 10;
