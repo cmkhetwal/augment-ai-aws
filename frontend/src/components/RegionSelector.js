@@ -1,19 +1,22 @@
 import React, { useState, useEffect } from 'react';
-import { 
-  Select, Tag, Space, Typography, Button, Card, Row, Col, 
-  Statistic, Tooltip, Alert, Spin 
+import {
+  Select, Tag, Space, Typography, Button, Card, Row, Col,
+  Statistic, Tooltip, Alert, Spin
 } from 'antd';
-import { 
-  GlobalOutlined, 
-  ReloadOutlined, 
+import {
+  GlobalOutlined,
+  ReloadOutlined,
   CheckCircleOutlined,
   ExclamationCircleOutlined
 } from '@ant-design/icons';
+import { API_ENDPOINTS } from '../config/api';
+import { useAuth } from '../contexts/AuthContext';
 
 const { Option } = Select;
 const { Text, Title } = Typography;
 
 const RegionSelector = ({ selectedRegion, onRegionChange, instanceCounts = {} }) => {
+  const { token } = useAuth();
   const [regionStats, setRegionStats] = useState({
     totalRegions: 0,
     enabledRegions: [],
@@ -31,7 +34,12 @@ const RegionSelector = ({ selectedRegion, onRegionChange, instanceCounts = {} })
   const loadRegionStats = async () => {
     setLoading(true);
     try {
-      const response = await fetch('/api/regions');
+      const response = await fetch(API_ENDPOINTS.REGIONS, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      });
       const data = await response.json();
       setRegionStats(data);
     } catch (error) {
@@ -44,9 +52,15 @@ const RegionSelector = ({ selectedRegion, onRegionChange, instanceCounts = {} })
   const refreshRegions = async () => {
     setRefreshing(true);
     try {
-      const response = await fetch('/api/regions/refresh', { method: 'POST' });
+      const response = await fetch(`${API_ENDPOINTS.REGIONS}/refresh`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      });
       const data = await response.json();
-      
+
       if (data.success) {
         await loadRegionStats();
         // You might want to show a success message here

@@ -6,8 +6,8 @@ services:
     networks:
       - monitoring-network
     environment:
-      MONGO_INITDB_ROOT_USERNAME: admin
-      MONGO_INITDB_ROOT_PASSWORD: password123
+      MONGO_INITDB_ROOT_USERNAME: ${MONGODB_USERNAME:-admin}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGODB_PASSWORD:-password123}
     volumes:
       - mongodb_data:/data/db
     deploy:
@@ -19,6 +19,20 @@ services:
         condition: on-failure
         delay: 5s
         max_attempts: 3
+        window: 120s
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 1G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: ${HEALTH_CHECK_INTERVAL:-30s}
+      timeout: ${HEALTH_CHECK_TIMEOUT:-10s}
+      retries: ${HEALTH_CHECK_RETRIES:-3}
+      start_period: ${HEALTH_CHECK_START_PERIOD:-60s}
     ports:
       - "27017:27017"
 
@@ -27,38 +41,42 @@ services:
     networks:
       - monitoring-network
     environment:
-      - NODE_ENV=production
-      - MONGODB_URI=mongodb://admin:password123@mongodb:27017/aws-monitor?authSource=admin
-      - AWS_REGION=us-east-1
+      - NODE_ENV=${NODE_ENV:-production}
+      - MONGODB_URI=${MONGODB_URI:-mongodb://admin:password123@mongodb:27017/aws-monitor?authSource=admin}
+      - AWS_REGION=${AWS_REGION:-us-east-1}
       - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
       - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
-      - MAX_INSTANCES=500
-      - MAX_CONCURRENT_REQUESTS=25
-      - REQUEST_DELAY=150
-      - BATCH_SIZE=50
+      - JWT_SECRET=${JWT_SECRET:-change-this-secret-in-production}
+      - JWT_EXPIRES_IN=${JWT_EXPIRES_IN:-24h}
+      - BCRYPT_ROUNDS=${BCRYPT_ROUNDS:-12}
+      - MAX_INSTANCES=${MAX_INSTANCES:-500}
+      - MAX_CONCURRENT_REQUESTS=${MAX_CONCURRENT_REQUESTS:-25}
+      - REQUEST_DELAY=${REQUEST_DELAY:-150}
+      - BATCH_SIZE=${BATCH_SIZE:-50}
       - EMAIL_NOTIFICATIONS_ENABLED=${EMAIL_NOTIFICATIONS_ENABLED:-false}
       - SMTP_HOST=${SMTP_HOST}
-      - SMTP_PORT=${SMTP_PORT}
+      - SMTP_PORT=${SMTP_PORT:-587}
       - SMTP_USER=${SMTP_USER}
       - SMTP_PASS=${SMTP_PASS}
       - FROM_EMAIL=${FROM_EMAIL}
       - TO_EMAILS=${TO_EMAILS}
       - SLACK_NOTIFICATIONS_ENABLED=${SLACK_NOTIFICATIONS_ENABLED:-false}
       - SLACK_WEBHOOK_URL=${SLACK_WEBHOOK_URL}
-      - SLACK_CHANNEL=${SLACK_CHANNEL}
-      - SLACK_USERNAME=${SLACK_USERNAME}
+      - SLACK_CHANNEL=${SLACK_CHANNEL:-#aws-monitoring}
+      - SLACK_USERNAME=${SLACK_USERNAME:-AWS Monitor Bot}
       - GOOGLE_CHAT_NOTIFICATIONS_ENABLED=${GOOGLE_CHAT_NOTIFICATIONS_ENABLED:-false}
       - GOOGLE_CHAT_WEBHOOK_URL=${GOOGLE_CHAT_WEBHOOK_URL}
     depends_on:
       - mongodb
     deploy:
       mode: replicated
-      replicas: 2
+      replicas: ${BACKEND_REPLICAS:-2}
       update_config:
         parallelism: 1
         delay: 10s
         failure_action: rollback
         order: start-first
+        monitor: 60s
       restart_policy:
         condition: on-failure
         delay: 5s
@@ -66,11 +84,17 @@ services:
         window: 120s
       resources:
         limits:
-          cpus: '1.5'
-          memory: 2G
+          cpus: ${BACKEND_CPU_LIMIT:-1.5}
+          memory: ${BACKEND_MEMORY_LIMIT:-2G}
         reservations:
-          cpus: '0.5'
-          memory: 1G
+          cpus: ${BACKEND_CPU_RESERVATION:-0.5}
+          memory: ${BACKEND_MEMORY_RESERVATION:-1G}
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3001/health"]
+      interval: ${HEALTH_CHECK_INTERVAL:-30s}
+      timeout: ${HEALTH_CHECK_TIMEOUT:-10s}
+      retries: ${HEALTH_CHECK_RETRIES:-3}
+      start_period: ${HEALTH_CHECK_START_PERIOD:-60s}
     ports:
       - "3001:3001"
 
@@ -82,12 +106,13 @@ services:
       - backend
     deploy:
       mode: replicated
-      replicas: 2
+      replicas: ${FRONTEND_REPLICAS:-2}
       update_config:
         parallelism: 1
         delay: 10s
         failure_action: rollback
         order: start-first
+        monitor: 60s
       restart_policy:
         condition: on-failure
         delay: 5s
@@ -95,11 +120,17 @@ services:
         window: 120s
       resources:
         limits:
-          cpus: '0.75'
-          memory: 768M
+          cpus: ${FRONTEND_CPU_LIMIT:-0.75}
+          memory: ${FRONTEND_MEMORY_LIMIT:-768M}
         reservations:
-          cpus: '0.25'
-          memory: 256M
+          cpus: ${FRONTEND_CPU_RESERVATION:-0.25}
+          memory: ${FRONTEND_MEMORY_RESERVATION:-256M}
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:80/"]
+      interval: ${HEALTH_CHECK_INTERVAL:-30s}
+      timeout: ${HEALTH_CHECK_TIMEOUT:-10s}
+      retries: ${HEALTH_CHECK_RETRIES:-3}
+      start_period: ${HEALTH_CHECK_START_PERIOD:-60s}
     ports:
       - "3000:80"
 
@@ -114,16 +145,33 @@ services:
       - frontend
       - backend
     deploy:
-      replicas: 2
+      replicas: ${NGINX_REPLICAS:-2}
       update_config:
         parallelism: 1
         delay: 5s
+        failure_action: rollback
+        monitor: 30s
       restart_policy:
         condition: on-failure
         delay: 5s
+        max_attempts: 3
+        window: 120s
       placement:
         constraints:
           - node.role == manager
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+        reservations:
+          cpus: '0.1'
+          memory: 128M
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:80/health"]
+      interval: ${HEALTH_CHECK_INTERVAL:-30s}
+      timeout: ${HEALTH_CHECK_TIMEOUT:-10s}
+      retries: ${HEALTH_CHECK_RETRIES:-3}
+      start_period: 30s
     ports:
       - "80:80"
       - "443:443"

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import {
   Card, Form, Input, Switch, Button, Space, Typography, Alert,
-  Divider, Row, Col, Select, InputNumber, Tabs, message
+  Divider, Row, Col, Select, InputNumber, Tabs, message, Result
 } from 'antd';
 import {
   SlackOutlined,
@@ -10,8 +10,11 @@ import {
   BellOutlined,
   ExperimentOutlined,
   SaveOutlined,
-  SettingOutlined
+  SettingOutlined,
+  LockOutlined
 } from '@ant-design/icons';
+import { useAuth } from '../contexts/AuthContext';
+import { API_ENDPOINTS } from '../config/api';
 
 const { Title, Text, Paragraph } = Typography;
 const { TextArea } = Input;
@@ -19,6 +22,7 @@ const { Option } = Select;
 const { TabPane } = Tabs;
 
 const NotificationConfig = () => {
+  const { hasPermission, token } = useAuth();
   const [form] = Form.useForm();
   const [loading, setLoading] = useState(false);
   const [testLoading, setTestLoading] = useState(false);
@@ -29,6 +33,9 @@ const NotificationConfig = () => {
   });
   const [formValues, setFormValues] = useState({});
 
+  // Check if user has permission to manage notifications
+  const canManageNotifications = hasPermission('manage_notifications');
+
   // Load current configuration
   useEffect(() => {
     loadConfiguration();
@@ -36,7 +43,12 @@ const NotificationConfig = () => {
 
   const loadConfiguration = async () => {
     try {
-      const response = await fetch('/api/notifications/config');
+      const response = await fetch(`${API_ENDPOINTS.NOTIFICATIONS}/config`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      });
       const data = await response.json();
       setConfig(data);
       setFormValues(data);
@@ -53,11 +65,17 @@ const NotificationConfig = () => {
   };
 
   const handleSave = async (values) => {
+    if (!canManageNotifications) {
+      message.error('You do not have permission to modify notification settings');
+      return;
+    }
+
     setLoading(true);
     try {
-      const response = await fetch('/api/notifications/config', {
+      const response = await fetch(`${API_ENDPOINTS.NOTIFICATIONS}/config`, {
         method: 'POST',
         headers: {
+          'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify(values),
@@ -67,28 +85,35 @@ const NotificationConfig = () => {
         message.success('Notification configuration saved successfully');
         setConfig(values);
       } else {
-        throw new Error('Failed to save configuration');
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to save configuration');
       }
     } catch (error) {
       console.error('Error saving configuration:', error);
-      message.error('Failed to save notification configuration');
+      message.error('Failed to save notification configuration: ' + error.message);
     } finally {
       setLoading(false);
     }
   };
 
   const handleTest = async () => {
+    if (!canManageNotifications) {
+      message.error('You do not have permission to send test notifications');
+      return;
+    }
+
     setTestLoading(true);
     try {
-      const response = await fetch('/api/notifications/test', {
+      const response = await fetch(`${API_ENDPOINTS.NOTIFICATIONS}/test`, {
         method: 'POST',
         headers: {
+          'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json',
         },
       });
 
       const data = await response.json();
-      
+
       if (response.ok) {
         message.success('Test notifications sent! Check your configured channels.');
         console.log('Test results:', data.results);
@@ -102,6 +127,31 @@ const NotificationConfig = () => {
       setTestLoading(false);
     }
   };
+
+  // Show access denied message if user doesn't have permission
+  if (!canManageNotifications) {
+    return (
+      <div style={{ padding: '24px' }}>
+        <Result
+          status="403"
+          title="Access Denied"
+          subTitle="You do not have permission to manage notification settings. Contact your administrator to request 'manage_notifications' permission."
+          icon={<LockOutlined style={{ color: '#ff4d4f' }} />}
+          extra={
+            <div>
+              <Typography.Text type="secondary">
+                Required permission: <Typography.Text code>manage_notifications</Typography.Text>
+              </Typography.Text>
+              <br />
+              <Typography.Text type="secondary">
+                Your current role allows you to view monitoring data but not modify notification settings.
+              </Typography.Text>
+            </div>
+          }
+        />
+      </div>
+    );
+  }
 
   return (
     <div style={{ padding: '24px' }}>
@@ -481,7 +531,7 @@ const NotificationConfig = () => {
                 icon={<ExperimentOutlined />}
                 onClick={handleTest}
                 loading={testLoading}
-                disabled={!config.email?.enabled && !config.slack?.enabled && !config.googleChat?.enabled}
+                disabled={!canManageNotifications || (!config.email?.enabled && !config.slack?.enabled && !config.googleChat?.enabled)}
               >
                 Send Test Notification
               </Button>
@@ -491,6 +541,7 @@ const NotificationConfig = () => {
                 htmlType="submit"
                 loading={loading}
                 size="large"
+                disabled={!canManageNotifications}
               >
                 Save Configuration
               </Button>

@@ -34,6 +34,35 @@ const PORT = process.env.PORT || 3001;
 app.use(cors());
 app.use(express.json());
 
+// Health check endpoint
+app.get('/health', (req, res) => {
+  const healthCheck = {
+    uptime: process.uptime(),
+    message: 'OK',
+    timestamp: Date.now(),
+    environment: process.env.NODE_ENV || 'development',
+    version: process.env.npm_package_version || '1.0.0',
+    services: {
+      aws: awsService ? 'connected' : 'disconnected',
+      websocket: wss.clients.size > 0 ? 'active' : 'inactive',
+      monitoring: monitoringData.instances.length > 0 ? 'active' : 'inactive'
+    },
+    stats: {
+      connectedClients: connectedClients.size,
+      totalInstances: monitoringData.stats.totalInstances,
+      runningInstances: monitoringData.stats.runningInstances
+    }
+  };
+
+  try {
+    res.status(200).json(healthCheck);
+  } catch (error) {
+    healthCheck.message = 'ERROR';
+    healthCheck.error = error.message;
+    res.status(503).json(healthCheck);
+  }
+});
+
 // Authentication routes
 app.use('/api/auth', authRoutes);
 

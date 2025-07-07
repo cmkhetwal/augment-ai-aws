@@ -1,15 +1,17 @@
 import React, { useState, useEffect } from 'react';
-import { 
+import {
   Input, Card, List, Typography, Tag, Empty, Spin, Button, Space,
   Tooltip, Row, Col
 } from 'antd';
-import { 
-  SearchOutlined, 
+import {
+  SearchOutlined,
   CloudServerOutlined,
   CheckCircleOutlined,
   ExclamationCircleOutlined,
   CloseCircleOutlined
 } from '@ant-design/icons';
+import { API_ENDPOINTS } from '../config/api';
+import { useAuth } from '../contexts/AuthContext';
 
 const { Search } = Input;
 const { Text, Title } = Typography;
@@ -18,6 +20,7 @@ const SearchInstances = ({ onInstanceSelect, showMetrics = true }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [searchResults, setSearchResults] = useState([]);
   const [loading, setLoading] = useState(false);
+  const { token } = useAuth();
   const [searchHistory, setSearchHistory] = useState([]);
 
   // Load search history from localStorage
@@ -46,7 +49,11 @@ const SearchInstances = ({ onInstanceSelect, showMetrics = true }) => {
 
     setLoading(true);
     try {
-      const response = await fetch(`/api/search?q=${encodeURIComponent(searchValue)}&type=instances`);
+      const response = await fetch(`${API_ENDPOINTS.INSTANCES}?search=${encodeURIComponent(searchValue)}`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      });
       const data = await response.json();
       
       if (data.results) {

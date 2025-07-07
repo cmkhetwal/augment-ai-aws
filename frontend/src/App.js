@@ -1,15 +1,23 @@
 import React, { useState, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, useNavigate, useLocation } from 'react-router-dom';
-import { Layout, Menu, Typography, notification } from 'antd';
-import { 
-  DashboardOutlined, 
-  CloudServerOutlined, 
-  WifiOutlined, 
+import { Layout, Menu, Typography, notification, Button, Dropdown, Avatar } from 'antd';
+import {
+  DashboardOutlined,
+  CloudServerOutlined,
+  WifiOutlined,
   BarChartOutlined,
   SecurityScanOutlined,
   BellOutlined,
-  SearchOutlined
+  SearchOutlined,
+  UserOutlined,
+  LogoutOutlined,
+  SettingOutlined,
+  TeamOutlined
 } from '@ant-design/icons';
+import { AuthProvider, useAuth } from './contexts/AuthContext';
+import ProtectedRoute from './components/ProtectedRoute';
+import UserManagement from './components/UserManagement';
+import ChangePassword from './components/ChangePassword';
 import DashboardEnhanced from './pages/DashboardEnhanced';
 import Instances from './pages/Instances';
 import PingMonitor from './pages/PingMonitor';
@@ -18,6 +26,7 @@ import PortScanner from './pages/PortScanner';
 import NotificationConfig from './components/NotificationConfig';
 import SearchInstances from './components/SearchInstances';
 import WebSocketService from './services/WebSocketService';
+import { API_ENDPOINTS } from './config/api';
 import './App.css';
 
 const { Header, Sider, Content } = Layout;
@@ -34,23 +43,32 @@ function AppContent() {
     openPorts: {}
   });
   const [connectionStatus, setConnectionStatus] = useState('connecting');
+  const { user, logout, hasPermission, token } = useAuth();
 
   // Function to load data directly from API as fallback
   const loadDataFromAPI = async () => {
     try {
       console.log('Loading data from API...');
       const [dashboardResponse, regionsResponse] = await Promise.all([
-        fetch('/api/dashboard'),
-        fetch('/api/regions')
+        fetch(`${API_ENDPOINTS.INSTANCES}?dashboard=true`, {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+          },
+        }),
+        fetch(API_ENDPOINTS.REGIONS, {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+          },
+        })
       ]);
-      
+
       const dashboardData = await dashboardResponse.json();
       const regionsData = await regionsResponse.json();
-      
+
       console.log('Dashboard data loaded:', dashboardData);
       console.log('Regions data loaded:', regionsData);
       console.log('Total instances found:', dashboardData.instances?.length);
-      
+
       setMonitoringData(dashboardData);
     } catch (error) {
       console.error('Error loading data from API:', error);
@@ -58,12 +76,14 @@ function AppContent() {
   };
 
   useEffect(() => {
-    const wsService = new WebSocketService();
-    
-    // Load initial data from API immediately
-    loadDataFromAPI();
-    
-    wsService.connect();
+    // Only initialize if user is authenticated
+    if (token && user) {
+      const wsService = new WebSocketService();
+
+      // Load initial data from API immediately
+      loadDataFromAPI();
+
+      wsService.connect();
     
     wsService.onMessage((data) => {
       console.log('WebSocket message received:', data.type, data);
@@ -127,10 +147,11 @@ function AppContent() {
       });
     });
 
-    return () => {
-      wsService.disconnect();
-    };
-  }, []);
+      return () => {
+        wsService.disconnect();
+      };
+    }
+  }, [token, user]);
 
   const menuItems = [
     {
@@ -174,7 +195,13 @@ function AppContent() {
       icon: <BellOutlined />,
       label: 'Notifications',
       path: '/notifications'
-    }
+    },
+    ...(hasPermission('manage_users') ? [{
+      key: 'users',
+      icon: <TeamOutlined />,
+      label: 'User Management',
+      path: '/users'
+    }] : [])
   ];
 
   const handleMenuClick = (e) => {
@@ -252,47 +279,98 @@ function AppContent() {
           <Title level={3} style={{ margin: 0, color: '#001529' }}>
             AWS EC2 Monitoring Dashboard
           </Title>
-          <div style={{ display: 'flex', alignItems: 'center' }}>
-            <span style={{ marginRight: 8 }}>Status:</span>
-            <div style={{
-              width: 12,
-              height: 12,
-              borderRadius: '50%',
-              backgroundColor: getConnectionStatusColor(),
-              marginRight: 8
-            }} />
-            <span style={{ textTransform: 'capitalize' }}>{connectionStatus}</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+            <div style={{ display: 'flex', alignItems: 'center' }}>
+              <span style={{ marginRight: 8 }}>Status:</span>
+              <div style={{
+                width: 12,
+                height: 12,
+                borderRadius: '50%',
+                backgroundColor: getConnectionStatusColor(),
+                marginRight: 8
+              }} />
+              <span style={{ textTransform: 'capitalize' }}>{connectionStatus}</span>
+            </div>
+            <Dropdown
+              menu={{
+                items: [
+                  {
+                    key: 'profile',
+                    icon: <UserOutlined />,
+                    label: 'Profile',
+                  },
+                  {
+                    key: 'change-password',
+                    icon: <SettingOutlined />,
+                    label: 'Change Password',
+                  },
+                  {
+                    type: 'divider',
+                  },
+                  {
+                    key: 'logout',
+                    icon: <LogoutOutlined />,
+                    label: 'Logout',
+                  },
+                ],
+                onClick: ({ key }) => {
+                  if (key === 'logout') {
+                    logout();
+                  } else if (key === 'change-password') {
+                    navigate('/change-password');
+                  }
+                },
+              }}
+              placement="bottomRight"
+            >
+              <Button type="text" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Avatar size="small" icon={<UserOutlined />} />
+                <span>{user?.firstName} {user?.lastName}</span>
+              </Button>
+            </Dropdown>
           </div>
         </Header>
         <Content style={{ padding: 24, background: '#f0f2f5', overflow: 'initial' }}>
           <Routes>
-            <Route 
-              path="/" 
-              element={<DashboardEnhanced data={monitoringData} />} 
+            <Route
+              path="/"
+              element={<DashboardEnhanced data={monitoringData} />}
             />
-            <Route 
-              path="/search" 
-              element={<SearchInstances showMetrics={true} />} 
+            <Route
+              path="/search"
+              element={<SearchInstances showMetrics={true} />}
             />
-            <Route 
-              path="/instances" 
-              element={<Instances data={monitoringData} />} 
+            <Route
+              path="/instances"
+              element={<Instances data={monitoringData} />}
             />
-            <Route 
-              path="/ping" 
-              element={<PingMonitor data={monitoringData} />} 
+            <Route
+              path="/ping"
+              element={<PingMonitor data={monitoringData} />}
             />
-            <Route 
-              path="/metrics" 
-              element={<SystemMetrics data={monitoringData} />} 
+            <Route
+              path="/metrics"
+              element={<SystemMetrics data={monitoringData} />}
             />
-            <Route 
-              path="/ports" 
-              element={<PortScanner data={monitoringData} />} 
+            <Route
+              path="/ports"
+              element={<PortScanner data={monitoringData} />}
             />
-            <Route 
-              path="/notifications" 
-              element={<NotificationConfig />} 
+            <Route
+              path="/notifications"
+              element={<NotificationConfig />}
+            />
+            <Route
+              path="/users"
+              element={
+                <ProtectedRoute requiredPermission="manage_users">
+                  <UserManagement />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/change-password"
+              element={<ChangePassword />}
             />
           </Routes>
         </Content>
@@ -303,9 +381,13 @@ function AppContent() {
 
 function App() {
   return (
-    <Router>
-      <AppContent />
-    </Router>
+    <AuthProvider>
+      <Router>
+        <ProtectedRoute>
+          <AppContent />
+        </ProtectedRoute>
+      </Router>
+    </AuthProvider>
   );
 }
 

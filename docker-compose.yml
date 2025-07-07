@@ -1,0 +1,61 @@
+version: '3.8'
+
+services:
+  mongodb:
+    image: mongo:7.0
+    container_name: aws-monitor-mongodb
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: admin
+      MONGO_INITDB_ROOT_PASSWORD: password123
+    volumes:
+      - mongodb_data:/data/db
+    ports:
+      - "27017:27017"
+    networks:
+      - monitoring-network
+    restart: unless-stopped
+
+  backend:
+    image: aws-monitor-backend:latest
+    container_name: aws-monitor-backend
+    ports:
+      - "3001:3001"
+    environment:
+      - NODE_ENV=production
+      - MONGODB_URI=mongodb://admin:password123@mongodb:27017/aws-monitor?authSource=admin
+      - AWS_REGION=us-east-1
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
+      - JWT_SECRET=change-this-secret-in-production
+      - JWT_EXPIRES_IN=24h
+      - BCRYPT_ROUNDS=12
+      - MAX_INSTANCES=500
+      - MAX_CONCURRENT_REQUESTS=25
+      - REQUEST_DELAY=150
+      - BATCH_SIZE=50
+      - EMAIL_NOTIFICATIONS_ENABLED=false
+      - SLACK_NOTIFICATIONS_ENABLED=false
+      - GOOGLE_CHAT_NOTIFICATIONS_ENABLED=false
+    depends_on:
+      - mongodb
+    networks:
+      - monitoring-network
+    restart: unless-stopped
+
+  frontend:
+    image: aws-monitor-frontend:latest
+    container_name: aws-monitor-frontend
+    ports:
+      - "3000:80"
+    depends_on:
+      - backend
+    networks:
+      - monitoring-network
+    restart: unless-stopped
+
+volumes:
+  mongodb_data:
+
+networks:
+  monitoring-network:
+    driver: bridge

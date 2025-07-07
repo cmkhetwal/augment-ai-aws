@@ -154,7 +154,7 @@ class User {
   // Validate user password
   async validatePassword(identifier, password) {
     let user = this.users.get(identifier.toLowerCase());
-    
+
     // If not found by email, try username
     if (!user) {
       for (const u of this.users.values()) {
