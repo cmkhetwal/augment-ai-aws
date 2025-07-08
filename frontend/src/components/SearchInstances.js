@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import {
   Input, Card, List, Typography, Tag, Empty, Spin, Button, Space,
-  Tooltip, Row, Col
+  Tooltip, Row, Col, AutoComplete
 } from 'antd';
 import {
   SearchOutlined,
@@ -22,22 +22,97 @@ const SearchInstances = ({ onInstanceSelect, showMetrics = true }) => {
   const [loading, setLoading] = useState(false);
   const { token } = useAuth();
   const [searchHistory, setSearchHistory] = useState([]);
+  const [suggestions, setSuggestions] = useState([]);
+  const [allInstances, setAllInstances] = useState([]);
 
-  // Load search history from localStorage
+  // Load search history from localStorage and fetch all instances for autocomplete
   useEffect(() => {
     const history = localStorage.getItem('searchHistory');
     if (history) {
       setSearchHistory(JSON.parse(history));
     }
+
+    // Fetch all instances for autocomplete suggestions
+    fetchAllInstances();
   }, []);
+
+  // Fetch all instances for autocomplete
+  const fetchAllInstances = async () => {
+    try {
+      const response = await fetch(`${API_ENDPOINTS.INSTANCES}?pageSize=1000`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      });
+      const data = await response.json();
+
+      if (data.instances) {
+        setAllInstances(data.instances);
+      }
+    } catch (error) {
+      console.error('Error fetching instances for autocomplete:', error);
+    }
+  };
 
   // Save search history to localStorage
   const saveSearchHistory = (term) => {
     if (!term.trim()) return;
-    
+
     const newHistory = [term, ...searchHistory.filter(h => h !== term)].slice(0, 5);
     setSearchHistory(newHistory);
     localStorage.setItem('searchHistory', JSON.stringify(newHistory));
+  };
+
+  // Generate autocomplete suggestions
+  const generateSuggestions = (searchValue) => {
+    if (!searchValue || searchValue.length < 1) {
+      setSuggestions([]);
+      return;
+    }
+
+    const searchLower = searchValue.toLowerCase();
+    const suggestionSet = new Set();
+
+    allInstances.forEach(instance => {
+      const instanceName = instance.Tags?.find(tag => tag.Key === 'Name')?.Value || instance.InstanceId;
+
+      // Match instance name
+      if (instanceName.toLowerCase().includes(searchLower)) {
+        suggestionSet.add(instanceName);
+      }
+
+      // Match instance ID
+      if (instance.InstanceId.toLowerCase().includes(searchLower)) {
+        suggestionSet.add(instance.InstanceId);
+      }
+
+      // Match instance type
+      if (instance.InstanceType.toLowerCase().includes(searchLower)) {
+        suggestionSet.add(instance.InstanceType);
+      }
+
+      // Match IP addresses (partial matching for IPs)
+      if (instance.PublicIpAddress && instance.PublicIpAddress.includes(searchValue)) {
+        suggestionSet.add(instance.PublicIpAddress);
+      }
+
+      if (instance.PrivateIpAddress && instance.PrivateIpAddress.includes(searchValue)) {
+        suggestionSet.add(instance.PrivateIpAddress);
+      }
+
+      // Match region
+      if (instance.Region && instance.Region.toLowerCase().includes(searchLower)) {
+        suggestionSet.add(instance.Region);
+      }
+    });
+
+    // Convert to array and limit to 10 suggestions
+    const suggestionArray = Array.from(suggestionSet).slice(0, 10).map(value => ({
+      value,
+      label: value
+    }));
+
+    setSuggestions(suggestionArray);
   };
 
   // Perform search
@@ -72,6 +147,7 @@ const SearchInstances = ({ onInstanceSelect, showMetrics = true }) => {
   useEffect(() => {
     const timeoutId = setTimeout(() => {
       performSearch(searchTerm);
+      generateSuggestions(searchTerm);
     }, 300);
 
     return () => clearTimeout(timeoutId);
@@ -149,16 +225,25 @@ const SearchInstances = ({ onInstanceSelect, showMetrics = true }) => {
   return (
     <div style={{ width: '100%' }}>
       <Card title="Search Instances" size="small">
-        <Search
-          placeholder="Search by name, ID, type, or IP address..."
+        <AutoComplete
+          options={suggestions}
           value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
-          onSearch={(value) => performSearch(value)}
-          prefix={<SearchOutlined />}
-          allowClear
-          size="large"
-          loading={loading}
-        />
+          onChange={(value) => setSearchTerm(value)}
+          onSelect={(value) => {
+            setSearchTerm(value);
+            performSearch(value);
+          }}
+          style={{ width: '100%' }}
+        >
+          <Input.Search
+            placeholder="Search by name, ID, type, or IP address..."
+            onSearch={(value) => performSearch(value)}
+            prefix={<SearchOutlined />}
+            allowClear
+            size="large"
+            loading={loading}
+          />
+        </AutoComplete>
 
         {/* Search History */}
         {!searchTerm && searchHistory.length > 0 && (

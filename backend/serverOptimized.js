@@ -141,18 +141,38 @@ app.get('/api/instances', authService.authenticateToken.bind(authService), async
       allInstances = allInstances.filter(instance => instance.Region === region);
     }
     
-    // Filter by search term
+    // Filter by search term with enhanced IP matching
     let filteredInstances = allInstances;
     if (search) {
       const searchLower = search.toLowerCase();
-      filteredInstances = allInstances.filter(instance => 
-        (instance.Name && instance.Name.toLowerCase().includes(searchLower)) ||
-        instance.InstanceId.toLowerCase().includes(searchLower) ||
-        instance.InstanceType.toLowerCase().includes(searchLower) ||
-        (instance.PublicIpAddress && instance.PublicIpAddress.includes(searchLower)) ||
-        (instance.PrivateIpAddress && instance.PrivateIpAddress.includes(searchLower)) ||
-        (instance.Region && instance.Region.toLowerCase().includes(searchLower))
-      );
+      const searchTerm = search.trim();
+
+      filteredInstances = allInstances.filter(instance => {
+        const instanceName = instance.Tags?.find(tag => tag.Key === 'Name')?.Value || instance.InstanceId;
+
+        // Enhanced matching logic
+        return (
+          // Name matching
+          (instanceName && instanceName.toLowerCase().includes(searchLower)) ||
+          // Instance ID matching
+          instance.InstanceId.toLowerCase().includes(searchLower) ||
+          // Instance type matching
+          instance.InstanceType.toLowerCase().includes(searchLower) ||
+          // Enhanced IP address matching (supports partial IPs like "10.0" or "192.168")
+          (instance.PublicIpAddress && (
+            instance.PublicIpAddress.includes(searchTerm) ||
+            instance.PublicIpAddress.startsWith(searchTerm)
+          )) ||
+          (instance.PrivateIpAddress && (
+            instance.PrivateIpAddress.includes(searchTerm) ||
+            instance.PrivateIpAddress.startsWith(searchTerm)
+          )) ||
+          // Region matching
+          (instance.Region && instance.Region.toLowerCase().includes(searchLower)) ||
+          // Availability zone matching
+          (instance.AvailabilityZone && instance.AvailabilityZone.toLowerCase().includes(searchLower))
+        );
+      });
     }
     
     // Sort instances
@@ -314,13 +334,30 @@ app.get('/api/search', authService.authenticateToken.bind(authService), async (r
       
       const matchingInstances = searchInstances.filter(instance => {
         const instanceName = instance.Tags?.find(tag => tag.Key === 'Name')?.Value || instance.InstanceId;
-        return instanceName.toLowerCase().includes(searchLower) ||
-               instance.InstanceId.toLowerCase().includes(searchLower) ||
-               instance.InstanceType.toLowerCase().includes(searchLower) ||
-               (instance.PublicIpAddress && instance.PublicIpAddress.includes(searchLower)) ||
-               (instance.PrivateIpAddress && instance.PrivateIpAddress.includes(searchLower)) ||
-               (instance.Region && instance.Region.toLowerCase().includes(searchLower)) ||
-               (instance.RegionName && instance.RegionName.toLowerCase().includes(searchLower));
+        const searchTerm = q.trim();
+
+        return (
+          // Name matching
+          (instanceName && instanceName.toLowerCase().includes(searchLower)) ||
+          // Instance ID matching
+          instance.InstanceId.toLowerCase().includes(searchLower) ||
+          // Instance type matching
+          instance.InstanceType.toLowerCase().includes(searchLower) ||
+          // Enhanced IP address matching (supports partial IPs)
+          (instance.PublicIpAddress && (
+            instance.PublicIpAddress.includes(searchTerm) ||
+            instance.PublicIpAddress.startsWith(searchTerm)
+          )) ||
+          (instance.PrivateIpAddress && (
+            instance.PrivateIpAddress.includes(searchTerm) ||
+            instance.PrivateIpAddress.startsWith(searchTerm)
+          )) ||
+          // Region matching
+          (instance.Region && instance.Region.toLowerCase().includes(searchLower)) ||
+          (instance.RegionName && instance.RegionName.toLowerCase().includes(searchLower)) ||
+          // Availability zone matching
+          (instance.AvailabilityZone && instance.AvailabilityZone.toLowerCase().includes(searchLower))
+        );
       });
 
       matchingInstances.forEach(instance => {

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { 
-  Row, Col, Card, Statistic, Progress, Tag, List, Typography, 
-  Input, Select, Button, Space, Switch, Alert, Tooltip
+import {
+  Row, Col, Card, Statistic, Progress, Tag, List, Typography,
+  Input, Select, Button, Space, Switch, Alert, Tooltip, Modal, message
 } from 'antd';
 import { 
   CloudServerOutlined, 
@@ -33,8 +33,47 @@ const DashboardEnhanced = ({ data }) => {
   const [filteredInstances, setFilteredInstances] = useState([]);
   const [instanceCounts, setInstanceCounts] = useState({});
   const [debugMode, setDebugMode] = useState(false);
+  const [highUsageModalVisible, setHighUsageModalVisible] = useState(false);
+  const [securityRiskModalVisible, setSecurityRiskModalVisible] = useState(false);
 
   const { instances = [], pingResults = {}, systemMetrics = {}, openPorts = {}, stats = {} } = data;
+
+  // Handler functions for clickable cards
+  const handleHighUsageClick = () => {
+    const highUsageInstances = sortedInstances.filter(instance =>
+      instance.hasHighCpu || instance.hasHighMemory
+    );
+
+    if (highUsageInstances.length === 0) {
+      message.info('No high usage instances found');
+      return;
+    }
+
+    // Set filters to show only high usage instances
+    setShowOnlyProblems(true);
+    setSortBy('usage');
+    setSearchTerm('');
+
+    // Show modal with details
+    setHighUsageModalVisible(true);
+  };
+
+  const handleSecurityRiskClick = () => {
+    const securityRiskInstances = sortedInstances.filter(instance => instance.securityRisk > 0);
+
+    if (securityRiskInstances.length === 0) {
+      message.info('No security risks detected');
+      return;
+    }
+
+    // Set filters to show only security risk instances
+    setShowOnlyProblems(true);
+    setSortBy('usage');
+    setSearchTerm('');
+
+    // Show modal with details
+    setSecurityRiskModalVisible(true);
+  };
 
   // Debug logging
   useEffect(() => {
@@ -164,7 +203,20 @@ const DashboardEnhanced = ({ data }) => {
 
     // Apply problem filter
     if (showOnlyProblems) {
-      filtered = filtered.filter(instance => instance.hasProblems);
+      const problemInstances = filtered.filter(instance => instance.hasProblems);
+      console.log('Problem filter applied:', {
+        beforeFilter: filtered.length,
+        afterFilter: problemInstances.length,
+        problemInstances: problemInstances.map(i => ({
+          name: i.instanceName,
+          hasHighCpu: i.hasHighCpu,
+          hasHighMemory: i.hasHighMemory,
+          isOffline: i.isOffline,
+          securityRisk: i.securityRisk,
+          hasProblems: i.hasProblems
+        }))
+      });
+      filtered = problemInstances;
     }
 
     console.log('Final filtered instances:', filtered.length);
@@ -364,7 +416,11 @@ const DashboardEnhanced = ({ data }) => {
         </Col>
         
         <Col xs={24} sm={12} lg={6}>
-          <Card>
+          <Card
+            hoverable
+            style={{ cursor: 'pointer' }}
+            onClick={() => handleHighUsageClick()}
+          >
             <Statistic
               title="High Usage Alerts"
               value={highUsageCount}
@@ -375,12 +431,23 @@ const DashboardEnhanced = ({ data }) => {
               <Text type={highUsageCount > 0 ? 'danger' : 'success'}>
                 {highUsageCount > 0 ? 'Action Required' : 'All Normal'}
               </Text>
+              {highUsageCount > 0 && (
+                <div style={{ marginTop: '8px' }}>
+                  <Text type="secondary" style={{ fontSize: '12px' }}>
+                    Click to view details
+                  </Text>
+                </div>
+              )}
             </div>
           </Card>
         </Col>
         
         <Col xs={24} sm={12} lg={6}>
-          <Card>
+          <Card
+            hoverable
+            style={{ cursor: 'pointer' }}
+            onClick={() => handleSecurityRiskClick()}
+          >
             <Statistic
               title="Security Risks"
               value={highRiskCount}
@@ -391,6 +458,13 @@ const DashboardEnhanced = ({ data }) => {
               <Text type={highRiskCount > 0 ? 'danger' : 'success'}>
                 {highRiskCount > 0 ? 'High Risk Ports' : 'No Risks Detected'}
               </Text>
+              {highRiskCount > 0 && (
+                <div style={{ marginTop: '8px' }}>
+                  <Text type="secondary" style={{ fontSize: '12px' }}>
+                    Click to view details
+                  </Text>
+                </div>
+              )}
             </div>
           </Card>
         </Col>
@@ -414,8 +488,13 @@ const DashboardEnhanced = ({ data }) => {
                   placeholder="Search instances..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
+                  onSearch={(value) => {
+                    console.log('Dashboard search triggered:', value);
+                    setSearchTerm(value);
+                  }}
                   prefix={<SearchOutlined />}
                   allowClear
+                  enterButton
                 />
               </Col>
               <Col xs={24} sm={12} md={6}>
@@ -537,11 +616,84 @@ const DashboardEnhanced = ({ data }) => {
       {/* Last Update Info */}
       <div style={{ marginTop: '24px', textAlign: 'center' }}>
         <Text type="secondary">
-          Last updated: {stats.lastUpdate ? new Date(stats.lastUpdate).toLocaleString() : 'Never'} 
+          Last updated: {stats.lastUpdate ? new Date(stats.lastUpdate).toLocaleString() : 'Never'}
           {' • '}
           Auto-refresh enabled
         </Text>
       </div>
+
+      {/* High Usage Modal */}
+      <Modal
+        title="High Usage Instances"
+        open={highUsageModalVisible}
+        onCancel={() => setHighUsageModalVisible(false)}
+        footer={[
+          <Button key="close" onClick={() => setHighUsageModalVisible(false)}>
+            Close
+          </Button>
+        ]}
+        width={800}
+      >
+        <List
+          dataSource={sortedInstances.filter(instance => instance.hasHighCpu || instance.hasHighMemory)}
+          renderItem={instance => (
+            <List.Item>
+              <div style={{ width: '100%' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div>
+                    <Text strong>{instance.instanceName}</Text>
+                    <br />
+                    <Text type="secondary">{instance.InstanceId} • {instance.InstanceType}</Text>
+                  </div>
+                  <div style={{ textAlign: 'right' }}>
+                    {instance.hasHighCpu && (
+                      <Tag color="red">CPU: {instance.currentCpu.toFixed(1)}%</Tag>
+                    )}
+                    {instance.hasHighMemory && (
+                      <Tag color="orange">Memory: {instance.currentMemory.toFixed(1)}%</Tag>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </List.Item>
+          )}
+        />
+      </Modal>
+
+      {/* Security Risk Modal */}
+      <Modal
+        title="Security Risk Instances"
+        open={securityRiskModalVisible}
+        onCancel={() => setSecurityRiskModalVisible(false)}
+        footer={[
+          <Button key="close" onClick={() => setSecurityRiskModalVisible(false)}>
+            Close
+          </Button>
+        ]}
+        width={800}
+      >
+        <List
+          dataSource={sortedInstances.filter(instance => instance.securityRisk > 0)}
+          renderItem={instance => (
+            <List.Item>
+              <div style={{ width: '100%' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div>
+                    <Text strong>{instance.instanceName}</Text>
+                    <br />
+                    <Text type="secondary">{instance.InstanceId} • {instance.InstanceType}</Text>
+                  </div>
+                  <div style={{ textAlign: 'right' }}>
+                    <Tag color="red">
+                      {instance.securityRisk} High-Risk Port{instance.securityRisk > 1 ? 's' : ''}
+                    </Tag>
+                  </div>
+                </div>
+              </div>
+            </List.Item>
+          )}
+        />
+      </Modal>
     </div>
   );
 };
