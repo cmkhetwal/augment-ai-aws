@@ -41,6 +41,8 @@ Thumbs.db
 # AWS
 .aws/
 aws-credentials.json
+aws-credentials.env
+devsecops.pem
 
 # Backups
 *.backup

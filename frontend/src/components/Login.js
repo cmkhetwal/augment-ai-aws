@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Form, Input, Button, Card, Typography, Alert, Space, Divider } from 'antd';
 import { UserOutlined, LockOutlined, LoginOutlined } from '@ant-design/icons';
 import { useAuth } from '../contexts/AuthContext';
+import SSOLogin from './SSOLogin';
 
 const { Title, Text } = Typography;
 
@@ -137,6 +138,9 @@ const Login = () => {
             </Button>
           </Form.Item>
         </Form>
+
+        {/* SSO Login Options */}
+        <SSOLogin loading={loading} />
 
         <Divider />
 

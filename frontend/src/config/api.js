@@ -25,6 +25,12 @@ export const API_ENDPOINTS = {
   PORTS: `${API_BASE_URL}/api/ports`,
   NOTIFICATIONS: `${API_BASE_URL}/api/notifications`,
   REGIONS: `${API_BASE_URL}/api/regions`,
+
+  // Website Monitoring
+  WEBSITE_MONITORING: `${API_BASE_URL}/api/website-monitoring`,
+
+  // SSO
+  SSO: `${API_BASE_URL}/api/sso`,
 };
 
 export default API_BASE_URL;

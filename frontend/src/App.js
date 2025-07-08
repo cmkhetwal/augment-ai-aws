@@ -12,7 +12,8 @@ import {
   UserOutlined,
   LogoutOutlined,
   SettingOutlined,
-  TeamOutlined
+  TeamOutlined,
+  GlobalOutlined
 } from '@ant-design/icons';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import ProtectedRoute from './components/ProtectedRoute';
@@ -25,6 +26,8 @@ import SystemMetrics from './pages/SystemMetrics';
 import PortScanner from './pages/PortScanner';
 import NotificationConfig from './components/NotificationConfig';
 import SearchInstances from './components/SearchInstances';
+import WebsiteMonitoring from './pages/WebsiteMonitoring';
+import SSOCallback from './pages/SSOCallback';
 import WebSocketService from './services/WebSocketService';
 import { API_ENDPOINTS } from './config/api';
 import './App.css';
@@ -189,6 +192,12 @@ function AppContent() {
       icon: <SecurityScanOutlined />,
       label: 'Port Scanner',
       path: '/ports'
+    },
+    {
+      key: 'websites',
+      icon: <GlobalOutlined />,
+      label: 'Website Monitoring',
+      path: '/websites'
     },
     {
       key: 'notifications',
@@ -357,6 +366,10 @@ function AppContent() {
               element={<PortScanner data={monitoringData} />}
             />
             <Route
+              path="/websites"
+              element={<WebsiteMonitoring />}
+            />
+            <Route
               path="/notifications"
               element={<NotificationConfig />}
             />
@@ -383,9 +396,17 @@ function App() {
   return (
     <AuthProvider>
       <Router>
-        <ProtectedRoute>
-          <AppContent />
-        </ProtectedRoute>
+        <Routes>
+          {/* Public routes */}
+          <Route path="/sso-callback" element={<SSOCallback />} />
+
+          {/* Protected routes */}
+          <Route path="/*" element={
+            <ProtectedRoute>
+              <AppContent />
+            </ProtectedRoute>
+          } />
+        </Routes>
       </Router>
     </AuthProvider>
   );

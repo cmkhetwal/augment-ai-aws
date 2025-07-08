@@ -66,6 +66,14 @@ app.get('/health', (req, res) => {
 // Authentication routes
 app.use('/api/auth', authRoutes);
 
+// Website monitoring routes
+const websiteMonitoringRoutes = require('./routes/websiteMonitoring');
+app.use('/api/website-monitoring', websiteMonitoringRoutes);
+
+// SSO routes
+const ssoRoutes = require('./routes/sso');
+app.use('/api/sso', ssoRoutes);
+
 let connectedClients = new Set();
 let monitoringData = {
   instances: [],
@@ -311,82 +319,96 @@ app.get('/api/dashboard', authService.authenticateToken.bind(authService), async
   }
 });
 
-// Search endpoint (multi-region)
+// Enhanced search endpoint using SearchService
+const searchService = require('./services/searchService');
+
 app.get('/api/search', authService.authenticateToken.bind(authService), async (req, res) => {
   try {
-    const { q, type = 'all', region = 'all' } = req.query;
-    
-    if (!q || q.length < 2) {
-      return res.json({ results: [] });
+    const { q, type = 'all', region = 'all', limit = 20 } = req.query;
+
+    if (!q || q.length < 1) {
+      return res.json({ results: [], suggestions: [] });
     }
 
-    const searchResults = [];
-    const searchLower = q.toLowerCase();
+    // Update search index with current instances
+    searchService.buildSearchIndex(monitoringData.instances);
 
-    // Search instances
-    if (type === 'all' || type === 'instances') {
-      let searchInstances = monitoringData.instances;
-      
-      // Filter by region if specified
-      if (region !== 'all') {
-        searchInstances = searchInstances.filter(instance => instance.Region === region);
-      }
-      
-      const matchingInstances = searchInstances.filter(instance => {
-        const instanceName = instance.Tags?.find(tag => tag.Key === 'Name')?.Value || instance.InstanceId;
-        const searchTerm = q.trim();
+    // Perform search
+    const searchOptions = {
+      limit: parseInt(limit),
+      regions: region !== 'all' ? [region] : [],
+      includeOffline: true
+    };
 
-        return (
-          // Name matching
-          (instanceName && instanceName.toLowerCase().includes(searchLower)) ||
-          // Instance ID matching
-          instance.InstanceId.toLowerCase().includes(searchLower) ||
-          // Instance type matching
-          instance.InstanceType.toLowerCase().includes(searchLower) ||
-          // Enhanced IP address matching (supports partial IPs)
-          (instance.PublicIpAddress && (
-            instance.PublicIpAddress.includes(searchTerm) ||
-            instance.PublicIpAddress.startsWith(searchTerm)
-          )) ||
-          (instance.PrivateIpAddress && (
-            instance.PrivateIpAddress.includes(searchTerm) ||
-            instance.PrivateIpAddress.startsWith(searchTerm)
-          )) ||
-          // Region matching
-          (instance.Region && instance.Region.toLowerCase().includes(searchLower)) ||
-          (instance.RegionName && instance.RegionName.toLowerCase().includes(searchLower)) ||
-          // Availability zone matching
-          (instance.AvailabilityZone && instance.AvailabilityZone.toLowerCase().includes(searchLower))
-        );
-      });
+    const searchResults = searchService.search(q, searchOptions);
+    const suggestions = searchService.getSuggestions(q, 10);
 
-      matchingInstances.forEach(instance => {
-        const instanceName = instance.Tags?.find(tag => tag.Key === 'Name')?.Value || instance.InstanceId;
-        const metrics = monitoringData.systemMetrics[instance.InstanceId];
-        
-        searchResults.push({
-          type: 'instance',
-          id: instance.InstanceId,
-          name: instanceName,
-          details: `${instance.InstanceType} - ${instance.State.Name} (${instance.RegionName || instance.Region})`,
-          region: instance.Region,
-          regionName: instance.RegionName,
-          metrics: metrics ? {
-            cpu: metrics.cpu?.current,
-            memory: metrics.memory?.current
-          } : null,
-          isOnline: monitoringData.pingResults[instance.InstanceId]?.alive
-        });
-      });
-    }
+    // Format results for frontend
+    const formattedResults = searchResults.map(result => {
+      const instance = result.instance;
+      const instanceName = instance.Tags?.find(tag => tag.Key === 'Name')?.Value || instance.InstanceId;
 
-    res.json({ 
-      results: searchResults,
-      regionStats: awsService.getRegionStats()
+      // Get additional monitoring data
+      const pingResult = monitoringData.pingResults[instance.InstanceId];
+      const metrics = monitoringData.systemMetrics[instance.InstanceId];
+
+      return {
+        ...instance,
+        instanceName,
+        isOnline: pingResult?.alive || false,
+        metrics: metrics || {},
+        searchScore: result.score,
+        matchedFields: result.matchedFields,
+        relevance: result.relevance
+      };
+    });
+
+    res.json({
+      success: true,
+      results: formattedResults,
+      suggestions: suggestions,
+      query: q,
+      totalFound: searchResults.length,
+      searchStats: searchService.getSearchStats()
     });
   } catch (error) {
-    console.error('Error searching:', error);
-    res.status(500).json({ error: error.message });
+    console.error('Enhanced search error:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message,
+      results: [],
+      suggestions: []
+    });
+  }
+});
+
+// Search suggestions endpoint
+app.get('/api/search/suggestions', authService.authenticateToken.bind(authService), async (req, res) => {
+  try {
+    const { q, limit = 10 } = req.query;
+
+    if (!q || q.length < 1) {
+      return res.json({ suggestions: [] });
+    }
+
+    // Update search index
+    searchService.buildSearchIndex(monitoringData.instances);
+
+    // Get suggestions
+    const suggestions = searchService.getSuggestions(q, parseInt(limit));
+
+    res.json({
+      success: true,
+      suggestions: suggestions,
+      query: q
+    });
+  } catch (error) {
+    console.error('Search suggestions error:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message,
+      suggestions: []
+    });
   }
 });
 
@@ -765,4 +787,11 @@ server.listen(PORT, () => {
   setTimeout(runPingChecks, 15000);
   setTimeout(collectSystemMetrics, 25000);
   setTimeout(scanPorts, 35000);
+
+  // Start website monitoring service
+  const websiteMonitoringService = require('./services/websiteMonitoringService');
+  setTimeout(() => {
+    console.log('Starting website monitoring service...');
+    websiteMonitoringService.startMonitoring();
+  }, 45000);
 });

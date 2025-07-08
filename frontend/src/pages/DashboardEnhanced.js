@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import {
   Row, Col, Card, Statistic, Progress, Tag, List, Typography,
-  Input, Select, Button, Space, Switch, Alert, Tooltip, Modal, message
+  Input, Select, Button, Space, Switch, Alert, Tooltip, Modal, message, AutoComplete
 } from 'antd';
 import { 
   CloudServerOutlined, 
@@ -35,6 +35,9 @@ const DashboardEnhanced = ({ data }) => {
   const [debugMode, setDebugMode] = useState(false);
   const [highUsageModalVisible, setHighUsageModalVisible] = useState(false);
   const [securityRiskModalVisible, setSecurityRiskModalVisible] = useState(false);
+  const [searchSuggestions, setSearchSuggestions] = useState([]);
+  const [selectedInstance, setSelectedInstance] = useState(null);
+  const [instanceDetailsModalVisible, setInstanceDetailsModalVisible] = useState(false);
 
   const { instances = [], pingResults = {}, systemMetrics = {}, openPorts = {}, stats = {} } = data;
 
@@ -222,6 +225,159 @@ const DashboardEnhanced = ({ data }) => {
     console.log('Final filtered instances:', filtered.length);
     setFilteredInstances(filtered);
   }, [sortedInstances, searchTerm, showOnlyProblems]);
+
+  // Generate enhanced search suggestions
+  const generateSearchSuggestions = (searchValue) => {
+    if (!searchValue || searchValue.length < 1) {
+      setSearchSuggestions([]);
+      return;
+    }
+
+    const searchLower = searchValue.toLowerCase();
+    const searchTerm = searchValue.trim();
+    const suggestionMap = new Map();
+
+    // Enhanced IP matching function
+    const matchesIP = (ip, search) => {
+      if (!ip) return false;
+      const ipParts = ip.split('.');
+      const searchParts = search.split('.');
+
+      if (ip.includes(search)) return true;
+
+      if (searchParts.length <= ipParts.length) {
+        return searchParts.every((part, index) =>
+          ipParts[index] && ipParts[index].startsWith(part)
+        );
+      }
+
+      return false;
+    };
+
+    sortedInstances.forEach(instance => {
+      const instanceState = instance.State?.Name || 'unknown';
+      const stateColor = instanceState === 'running' ? '#52c41a' : instanceState === 'stopped' ? '#f5222d' : '#faad14';
+
+      // Match instance name
+      if (instance.instanceName.toLowerCase().includes(searchLower)) {
+        const key = `name_${instance.instanceName}`;
+        suggestionMap.set(key, {
+          value: instance.instanceName,
+          label: (
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span><strong>{instance.instanceName}</strong> <small style={{ color: '#666' }}>({instance.InstanceId})</small></span>
+              <span style={{ color: stateColor, fontSize: '12px' }}>{instanceState}</span>
+            </div>
+          ),
+          instance: instance,
+          searchType: 'name'
+        });
+      }
+
+      // Match instance ID
+      if (instance.InstanceId.toLowerCase().includes(searchLower)) {
+        const key = `id_${instance.InstanceId}`;
+        suggestionMap.set(key, {
+          value: instance.InstanceId,
+          label: (
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span><strong>{instance.InstanceId}</strong> <small style={{ color: '#666' }}>({instance.instanceName})</small></span>
+              <span style={{ color: stateColor, fontSize: '12px' }}>{instanceState}</span>
+            </div>
+          ),
+          instance: instance,
+          searchType: 'id'
+        });
+      }
+
+      // Enhanced IP address matching
+      if (matchesIP(instance.PublicIpAddress, searchTerm)) {
+        const key = `public_ip_${instance.PublicIpAddress}`;
+        suggestionMap.set(key, {
+          value: instance.PublicIpAddress,
+          label: (
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span><strong>{instance.PublicIpAddress}</strong> <small style={{ color: '#666' }}>Public - {instance.instanceName}</small></span>
+              <span style={{ color: stateColor, fontSize: '12px' }}>{instanceState}</span>
+            </div>
+          ),
+          instance: instance,
+          searchType: 'public_ip'
+        });
+      }
+
+      if (matchesIP(instance.PrivateIpAddress, searchTerm)) {
+        const key = `private_ip_${instance.PrivateIpAddress}`;
+        suggestionMap.set(key, {
+          value: instance.PrivateIpAddress,
+          label: (
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span><strong>{instance.PrivateIpAddress}</strong> <small style={{ color: '#666' }}>Private - {instance.instanceName}</small></span>
+              <span style={{ color: stateColor, fontSize: '12px' }}>{instanceState}</span>
+            </div>
+          ),
+          instance: instance,
+          searchType: 'private_ip'
+        });
+      }
+
+      // Match instance type
+      if (instance.InstanceType.toLowerCase().includes(searchLower)) {
+        const key = `type_${instance.InstanceType}_${instance.InstanceId}`;
+        suggestionMap.set(key, {
+          value: instance.InstanceType,
+          label: (
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span><strong>{instance.InstanceType}</strong> <small style={{ color: '#666' }}>{instance.instanceName}</small></span>
+              <span style={{ color: stateColor, fontSize: '12px' }}>{instanceState}</span>
+            </div>
+          ),
+          instance: instance,
+          searchType: 'type'
+        });
+      }
+
+      // Match region
+      if (instance.Region && instance.Region.toLowerCase().includes(searchLower)) {
+        const key = `region_${instance.Region}_${instance.InstanceId}`;
+        suggestionMap.set(key, {
+          value: instance.Region,
+          label: (
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span><strong>{instance.Region}</strong> <small style={{ color: '#666' }}>{instance.instanceName}</small></span>
+              <span style={{ color: stateColor, fontSize: '12px' }}>{instanceState}</span>
+            </div>
+          ),
+          instance: instance,
+          searchType: 'region'
+        });
+      }
+    });
+
+    // Convert to array and sort by relevance
+    const suggestionArray = Array.from(suggestionMap.values())
+      .sort((a, b) => {
+        const aRunning = a.instance.State?.Name === 'running' ? 1 : 0;
+        const bRunning = b.instance.State?.Name === 'running' ? 1 : 0;
+        const aExact = a.value.toLowerCase() === searchLower ? 1 : 0;
+        const bExact = b.value.toLowerCase() === searchLower ? 1 : 0;
+
+        return (bExact - aExact) || (bRunning - aRunning);
+      })
+      .slice(0, 10);
+
+    setSearchSuggestions(suggestionArray);
+  };
+
+  // Handle search suggestion selection
+  const handleSearchSelect = (value, option) => {
+    setSearchTerm(value);
+
+    if (option && option.instance) {
+      setSelectedInstance(option.instance);
+      setInstanceDetailsModalVisible(true);
+    }
+  };
 
   const getInstanceStats = () => {
     const running = instances.filter(i => i.State.Name === 'running').length;
@@ -484,18 +640,27 @@ const DashboardEnhanced = ({ data }) => {
           <Card>
             <Row gutter={[16, 16]} align="middle">
               <Col xs={24} sm={12} md={10}>
-                <Search
-                  placeholder="Search instances..."
+                <AutoComplete
+                  options={searchSuggestions}
                   value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  onSearch={(value) => {
-                    console.log('Dashboard search triggered:', value);
+                  onChange={(value) => {
                     setSearchTerm(value);
+                    generateSearchSuggestions(value);
                   }}
-                  prefix={<SearchOutlined />}
-                  allowClear
-                  enterButton
-                />
+                  onSelect={handleSearchSelect}
+                  style={{ width: '100%' }}
+                  placeholder="Search instances by name, ID, IP, type..."
+                >
+                  <Input.Search
+                    prefix={<SearchOutlined />}
+                    allowClear
+                    enterButton="Search"
+                    onSearch={(value) => {
+                      console.log('Dashboard search triggered:', value);
+                      setSearchTerm(value);
+                    }}
+                  />
+                </AutoComplete>
               </Col>
               <Col xs={24} sm={12} md={6}>
                 <Select
@@ -693,6 +858,88 @@ const DashboardEnhanced = ({ data }) => {
             </List.Item>
           )}
         />
+      </Modal>
+
+      {/* Instance Details Modal */}
+      <Modal
+        title={selectedInstance ? `Instance Details - ${selectedInstance.instanceName}` : 'Instance Details'}
+        open={instanceDetailsModalVisible}
+        onCancel={() => setInstanceDetailsModalVisible(false)}
+        footer={[
+          <Button key="close" onClick={() => setInstanceDetailsModalVisible(false)}>
+            Close
+          </Button>
+        ]}
+        width={800}
+      >
+        {selectedInstance && (
+          <div>
+            <Row gutter={[16, 16]}>
+              <Col span={12}>
+                <Card size="small" title="Basic Information">
+                  <p><strong>Instance ID:</strong> {selectedInstance.InstanceId}</p>
+                  <p><strong>Name:</strong> {selectedInstance.instanceName}</p>
+                  <p><strong>Type:</strong> {selectedInstance.InstanceType}</p>
+                  <p><strong>State:</strong>
+                    <Tag color={selectedInstance.State?.Name === 'running' ? 'green' : 'red'} style={{ marginLeft: 8 }}>
+                      {selectedInstance.State?.Name || 'unknown'}
+                    </Tag>
+                  </p>
+                  <p><strong>Region:</strong> {selectedInstance.Region}</p>
+                  <p><strong>Availability Zone:</strong> {selectedInstance.Placement?.AvailabilityZone}</p>
+                </Card>
+              </Col>
+              <Col span={12}>
+                <Card size="small" title="Network Information">
+                  <p><strong>Public IP:</strong> {selectedInstance.PublicIpAddress || 'N/A'}</p>
+                  <p><strong>Private IP:</strong> {selectedInstance.PrivateIpAddress || 'N/A'}</p>
+                  <p><strong>VPC ID:</strong> {selectedInstance.VpcId || 'N/A'}</p>
+                  <p><strong>Subnet ID:</strong> {selectedInstance.SubnetId || 'N/A'}</p>
+                  <p><strong>Security Groups:</strong></p>
+                  <div style={{ marginLeft: 16 }}>
+                    {selectedInstance.SecurityGroups?.map(sg => (
+                      <Tag key={sg.GroupId} style={{ marginBottom: 4 }}>
+                        {sg.GroupName} ({sg.GroupId})
+                      </Tag>
+                    )) || 'N/A'}
+                  </div>
+                </Card>
+              </Col>
+            </Row>
+            <Row gutter={[16, 16]} style={{ marginTop: 16 }}>
+              <Col span={12}>
+                <Card size="small" title="Performance Metrics">
+                  <p><strong>CPU Usage:</strong>
+                    <span style={{ color: selectedInstance.currentCpu > 80 ? '#f5222d' : '#52c41a', marginLeft: 8 }}>
+                      {selectedInstance.currentCpu ? `${selectedInstance.currentCpu.toFixed(1)}%` : 'N/A'}
+                    </span>
+                  </p>
+                  <p><strong>Memory Usage:</strong>
+                    <span style={{ color: selectedInstance.currentMemory > 80 ? '#f5222d' : '#52c41a', marginLeft: 8 }}>
+                      {selectedInstance.currentMemory ? `${selectedInstance.currentMemory.toFixed(1)}%` : 'N/A'}
+                    </span>
+                  </p>
+                  <p><strong>Ping Status:</strong>
+                    <Tag color={selectedInstance.isOnline ? 'green' : 'red'} style={{ marginLeft: 8 }}>
+                      {selectedInstance.isOnline ? 'Online' : 'Offline'}
+                    </Tag>
+                  </p>
+                </Card>
+              </Col>
+              <Col span={12}>
+                <Card size="small" title="Tags">
+                  <div>
+                    {selectedInstance.Tags?.map(tag => (
+                      <Tag key={tag.Key} style={{ marginBottom: 4 }}>
+                        <strong>{tag.Key}:</strong> {tag.Value}
+                      </Tag>
+                    )) || 'No tags'}
+                  </div>
+                </Card>
+              </Col>
+            </Row>
+          </div>
+        )}
       </Modal>
     </div>
   );

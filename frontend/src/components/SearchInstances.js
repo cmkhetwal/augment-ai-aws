@@ -67,7 +67,7 @@ const SearchInstances = ({ onInstanceSelect, showMetrics = true }) => {
     localStorage.setItem('searchHistory', JSON.stringify(newHistory));
   };
 
-  // Generate autocomplete suggestions
+  // Enhanced autocomplete suggestions with fuzzy matching and categorization
   const generateSuggestions = (searchValue) => {
     if (!searchValue || searchValue.length < 1) {
       setSuggestions([]);
@@ -75,89 +75,264 @@ const SearchInstances = ({ onInstanceSelect, showMetrics = true }) => {
     }
 
     const searchLower = searchValue.toLowerCase();
-    const suggestionSet = new Set();
+    const searchTerm = searchValue.trim();
+    const suggestionMap = new Map();
 
     allInstances.forEach(instance => {
       const instanceName = instance.Tags?.find(tag => tag.Key === 'Name')?.Value || instance.InstanceId;
+      const instanceState = instance.State?.Name || 'unknown';
+      const stateColor = instanceState === 'running' ? '#52c41a' : instanceState === 'stopped' ? '#f5222d' : '#faad14';
 
-      // Match instance name
+      // Enhanced IP matching - supports partial IPs like "10.0", "192.168", etc.
+      const matchesIP = (ip, search) => {
+        if (!ip) return false;
+        const ipParts = ip.split('.');
+        const searchParts = search.split('.');
+
+        // Exact match
+        if (ip.includes(search)) return true;
+
+        // Partial IP matching (e.g., "10.0" matches "10.0.1.2")
+        if (searchParts.length <= ipParts.length) {
+          return searchParts.every((part, index) =>
+            ipParts[index] && ipParts[index].startsWith(part)
+          );
+        }
+
+        return false;
+      };
+
+      // Match instance name with fuzzy search
       if (instanceName.toLowerCase().includes(searchLower)) {
-        suggestionSet.add(instanceName);
+        const key = `name_${instanceName}`;
+        suggestionMap.set(key, {
+          value: instanceName,
+          label: (
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span><strong>{instanceName}</strong> <small style={{ color: '#666' }}>({instance.InstanceId})</small></span>
+              <span style={{ color: stateColor, fontSize: '12px' }}>{instanceState}</span>
+            </div>
+          ),
+          type: 'instance',
+          instance: instance,
+          searchType: 'name'
+        });
       }
 
       // Match instance ID
       if (instance.InstanceId.toLowerCase().includes(searchLower)) {
-        suggestionSet.add(instance.InstanceId);
+        const key = `id_${instance.InstanceId}`;
+        suggestionMap.set(key, {
+          value: instance.InstanceId,
+          label: (
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span><strong>{instance.InstanceId}</strong> <small style={{ color: '#666' }}>({instanceName})</small></span>
+              <span style={{ color: stateColor, fontSize: '12px' }}>{instanceState}</span>
+            </div>
+          ),
+          type: 'instance',
+          instance: instance,
+          searchType: 'id'
+        });
+      }
+
+      // Enhanced IP address matching
+      if (matchesIP(instance.PublicIpAddress, searchTerm)) {
+        const key = `public_ip_${instance.PublicIpAddress}`;
+        suggestionMap.set(key, {
+          value: instance.PublicIpAddress,
+          label: (
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span><strong>{instance.PublicIpAddress}</strong> <small style={{ color: '#666' }}>Public - {instanceName}</small></span>
+              <span style={{ color: stateColor, fontSize: '12px' }}>{instanceState}</span>
+            </div>
+          ),
+          type: 'instance',
+          instance: instance,
+          searchType: 'public_ip'
+        });
+      }
+
+      if (matchesIP(instance.PrivateIpAddress, searchTerm)) {
+        const key = `private_ip_${instance.PrivateIpAddress}`;
+        suggestionMap.set(key, {
+          value: instance.PrivateIpAddress,
+          label: (
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span><strong>{instance.PrivateIpAddress}</strong> <small style={{ color: '#666' }}>Private - {instanceName}</small></span>
+              <span style={{ color: stateColor, fontSize: '12px' }}>{instanceState}</span>
+            </div>
+          ),
+          type: 'instance',
+          instance: instance,
+          searchType: 'private_ip'
+        });
       }
 
       // Match instance type
       if (instance.InstanceType.toLowerCase().includes(searchLower)) {
-        suggestionSet.add(instance.InstanceType);
-      }
-
-      // Match IP addresses (partial matching for IPs)
-      if (instance.PublicIpAddress && instance.PublicIpAddress.includes(searchValue)) {
-        suggestionSet.add(instance.PublicIpAddress);
-      }
-
-      if (instance.PrivateIpAddress && instance.PrivateIpAddress.includes(searchValue)) {
-        suggestionSet.add(instance.PrivateIpAddress);
+        const key = `type_${instance.InstanceType}_${instance.InstanceId}`;
+        suggestionMap.set(key, {
+          value: instance.InstanceType,
+          label: (
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span><strong>{instance.InstanceType}</strong> <small style={{ color: '#666' }}>{instanceName}</small></span>
+              <span style={{ color: stateColor, fontSize: '12px' }}>{instanceState}</span>
+            </div>
+          ),
+          type: 'instance',
+          instance: instance,
+          searchType: 'type'
+        });
       }
 
       // Match region
       if (instance.Region && instance.Region.toLowerCase().includes(searchLower)) {
-        suggestionSet.add(instance.Region);
+        const key = `region_${instance.Region}_${instance.InstanceId}`;
+        suggestionMap.set(key, {
+          value: instance.Region,
+          label: (
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span><strong>{instance.Region}</strong> <small style={{ color: '#666' }}>{instanceName}</small></span>
+              <span style={{ color: stateColor, fontSize: '12px' }}>{instanceState}</span>
+            </div>
+          ),
+          type: 'instance',
+          instance: instance,
+          searchType: 'region'
+        });
       }
     });
 
-    // Convert to array and limit to 10 suggestions
-    const suggestionArray = Array.from(suggestionSet).slice(0, 10).map(value => ({
-      value,
-      label: value
-    }));
+    // Convert to array and limit to 15 suggestions, prioritize by relevance
+    const suggestionArray = Array.from(suggestionMap.values())
+      .sort((a, b) => {
+        // Prioritize exact matches and running instances
+        const aRunning = a.instance.State?.Name === 'running' ? 1 : 0;
+        const bRunning = b.instance.State?.Name === 'running' ? 1 : 0;
+        const aExact = a.value.toLowerCase() === searchLower ? 1 : 0;
+        const bExact = b.value.toLowerCase() === searchLower ? 1 : 0;
+
+        return (bExact - aExact) || (bRunning - aRunning);
+      })
+      .slice(0, 15);
 
     setSuggestions(suggestionArray);
   };
 
-  // Perform search
+  // Perform search using enhanced search API
   const performSearch = async (searchValue) => {
-    if (!searchValue || searchValue.length < 2) {
+    if (!searchValue || searchValue.length < 1) {
       setSearchResults([]);
+      setSuggestions([]);
       return;
     }
 
     setLoading(true);
     try {
-      // Use the search endpoint instead of instances endpoint
-      const response = await fetch(`${API_ENDPOINTS.SEARCH}?q=${encodeURIComponent(searchValue)}&type=instances`, {
+      const response = await fetch(`${API_ENDPOINTS.SEARCH}?q=${encodeURIComponent(searchValue)}&limit=20`, {
         headers: {
           'Authorization': `Bearer ${token}`,
         },
       });
       const data = await response.json();
 
-      console.log('Search API response:', data); // Debug logging
+      console.log('Enhanced search API response:', data);
 
-      if (data.results) {
+      if (data.success && data.results) {
         setSearchResults(data.results);
         saveSearchHistory(searchValue);
+
+        // Update suggestions from search results
+        if (data.suggestions) {
+          const formattedSuggestions = data.suggestions.map(suggestion => ({
+            value: suggestion.value,
+            label: (
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span>
+                  <strong>{suggestion.value}</strong>
+                  <small style={{ color: '#666', marginLeft: 8 }}>
+                    {suggestion.category} - {suggestion.instance.Tags?.find(tag => tag.Key === 'Name')?.Value || suggestion.instance.InstanceId}
+                  </small>
+                </span>
+                <span style={{ color: suggestion.stateColor, fontSize: '12px' }}>
+                  {suggestion.state}
+                </span>
+              </div>
+            ),
+            instance: suggestion.instance,
+            category: suggestion.category
+          }));
+          setSuggestions(formattedSuggestions);
+        }
       } else {
-        console.warn('No results property in search response:', data);
+        console.warn('Search failed or no results:', data);
         setSearchResults([]);
+        setSuggestions([]);
       }
     } catch (error) {
-      console.error('Search error:', error);
+      console.error('Enhanced search error:', error);
       setSearchResults([]);
+      setSuggestions([]);
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Generate suggestions using the new API
+  const generateSuggestionsFromAPI = async (searchValue) => {
+    if (!searchValue || searchValue.length < 1) {
+      setSuggestions([]);
+      return;
+    }
+
+    try {
+      const response = await fetch(`${API_ENDPOINTS.SEARCH}/suggestions?q=${encodeURIComponent(searchValue)}&limit=10`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      });
+      const data = await response.json();
+
+      if (data.success && data.suggestions) {
+        const formattedSuggestions = data.suggestions.map(suggestion => ({
+          value: suggestion.value,
+          label: (
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span>
+                <strong>{suggestion.value}</strong>
+                <small style={{ color: '#666', marginLeft: 8 }}>
+                  {suggestion.category}
+                </small>
+              </span>
+              <span style={{ color: suggestion.stateColor, fontSize: '12px' }}>
+                {suggestion.state}
+              </span>
+            </div>
+          ),
+          instance: suggestion.instance,
+          category: suggestion.category
+        }));
+        setSuggestions(formattedSuggestions);
+      }
+    } catch (error) {
+      console.error('Error fetching suggestions:', error);
+      setSuggestions([]);
     }
   };
 
   // Handle search input change with debouncing
   useEffect(() => {
     const timeoutId = setTimeout(() => {
-      performSearch(searchTerm);
-      generateSuggestions(searchTerm);
+      if (searchTerm && searchTerm.length >= 1) {
+        generateSuggestionsFromAPI(searchTerm);
+        if (searchTerm.length >= 2) {
+          performSearch(searchTerm);
+        }
+      } else {
+        setSuggestions([]);
+        setSearchResults([]);
+      }
     }, 300);
 
     return () => clearTimeout(timeoutId);
@@ -198,8 +373,13 @@ const SearchInstances = ({ onInstanceSelect, showMetrics = true }) => {
   };
 
   const formatInstanceDetails = (result) => {
-    const details = [result.details];
-    
+    // Handle new enhanced search result format
+    const instanceType = result.InstanceType || 'Unknown';
+    const state = result.State?.Name || 'unknown';
+    const region = result.Region || 'Unknown';
+
+    const details = [`${instanceType} - ${state} (${region})`];
+
     if (showMetrics && result.metrics) {
       const metricParts = [];
       if (result.metrics.cpu !== undefined) {
@@ -239,9 +419,14 @@ const SearchInstances = ({ onInstanceSelect, showMetrics = true }) => {
           options={suggestions}
           value={searchTerm}
           onChange={(value) => setSearchTerm(value)}
-          onSelect={(value) => {
+          onSelect={(value, option) => {
             setSearchTerm(value);
             performSearch(value);
+
+            // If user selected a suggestion with instance data, trigger navigation
+            if (option && option.instance && onInstanceSelect) {
+              onInstanceSelect(option.instance);
+            }
           }}
           style={{ width: '100%' }}
         >
@@ -319,10 +504,15 @@ const SearchInstances = ({ onInstanceSelect, showMetrics = true }) => {
                         </Col>
                         <Col flex="auto" style={{ marginLeft: '12px' }}>
                           <div>
-                            <Text strong>{result.name}</Text>
-                            {result.id !== result.name && (
+                            <Text strong>{result.instanceName}</Text>
+                            {result.InstanceId !== result.instanceName && (
                               <Text type="secondary" style={{ marginLeft: '8px', fontSize: '12px' }}>
-                                ({result.id})
+                                ({result.InstanceId})
+                              </Text>
+                            )}
+                            {result.searchScore && (
+                              <Text type="secondary" style={{ marginLeft: '8px', fontSize: '10px' }}>
+                                Score: {Math.round(result.searchScore)}
                               </Text>
                             )}
                           </div>
@@ -330,6 +520,15 @@ const SearchInstances = ({ onInstanceSelect, showMetrics = true }) => {
                             <Text type="secondary" style={{ fontSize: '12px' }}>
                               {formatInstanceDetails(result)}
                             </Text>
+                            {result.matchedFields && result.matchedFields.length > 0 && (
+                              <div style={{ marginTop: '4px' }}>
+                                {result.matchedFields.slice(0, 3).map((match, index) => (
+                                  <Tag key={index} size="small" color="blue" style={{ fontSize: '10px' }}>
+                                    {match.field}: {match.value}
+                                  </Tag>
+                                ))}
+                              </div>
+                            )}
                           </div>
                         </Col>
                         <Col flex="none">
