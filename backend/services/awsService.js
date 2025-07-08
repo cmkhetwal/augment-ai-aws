@@ -1,15 +1,34 @@
 const AWS = require('aws-sdk');
 
-// Configure AWS with explicit credentials and disable IAM role
+// Validate required AWS credentials
+if (!process.env.AWS_ACCESS_KEY_ID || !process.env.AWS_SECRET_ACCESS_KEY) {
+  console.error('ERROR: AWS credentials not found in environment variables!');
+  console.error('Please ensure AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY are set in .env file');
+  process.exit(1);
+}
+
+// Disable all AWS credential providers except explicit credentials
+AWS.config.credentials = null;
+AWS.config.credentialProvider = null;
+
+// Configure AWS with ONLY explicit credentials from .env file
+const awsCredentials = new AWS.Credentials({
+  accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+  secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY
+});
+
 AWS.config.update({
   region: process.env.AWS_REGION || 'us-east-1',
-  accessKeyId: process.env.AWS_ACCESS_KEY_ID,
-  secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
-  // Explicitly disable IAM role and metadata service
-  credentials: new AWS.Credentials({
-    accessKeyId: process.env.AWS_ACCESS_KEY_ID,
-    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY
-  })
+  credentials: awsCredentials,
+  // Disable metadata service and IAM role fallback
+  httpOptions: {
+    timeout: 30000
+  },
+  maxRetries: 3,
+  // Explicitly disable credential providers
+  credentialProvider: new AWS.CredentialProviderChain([
+    function() { return awsCredentials; }
+  ])
 });
 
 console.log('AWS Configuration:');

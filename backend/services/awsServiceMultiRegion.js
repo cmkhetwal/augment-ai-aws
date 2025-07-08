@@ -3,25 +3,41 @@ const NodeCache = require('node-cache');
 
 class MultiRegionAWSService {
   constructor() {
-    // Configure AWS with explicit credentials and disable IAM role
+    // Validate required AWS credentials
+    if (!process.env.AWS_ACCESS_KEY_ID || !process.env.AWS_SECRET_ACCESS_KEY) {
+      console.error('ERROR: AWS credentials not found in environment variables!');
+      console.error('Please ensure AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY are set in .env file');
+      process.exit(1);
+    }
+
+    // Disable all AWS credential providers except explicit credentials
+    AWS.config.credentials = null;
+    AWS.config.credentialProvider = null;
+
+    // Create explicit credentials from .env file
+    this.awsCredentials = new AWS.Credentials({
+      accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+      secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY
+    });
+
+    // Configure AWS with ONLY explicit credentials from .env file
     AWS.config.update({
       region: process.env.AWS_REGION || 'us-east-1',
-      accessKeyId: process.env.AWS_ACCESS_KEY_ID,
-      secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
-      // Explicitly disable IAM role and metadata service
-      credentials: new AWS.Credentials({
-        accessKeyId: process.env.AWS_ACCESS_KEY_ID,
-        secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY
-      }),
+      credentials: this.awsCredentials,
       maxRetries: 3,
       retryDelayOptions: {
         customBackoff: function(retryCount) {
           return Math.pow(2, retryCount) * 100;
         }
-      }
+      },
+      // Explicitly disable credential providers
+      credentialProvider: new AWS.CredentialProviderChain([
+        function() { return this.awsCredentials; }.bind(this)
+      ])
     });
 
     console.log('AWS Multi-Region Configuration:');
+    console.log('- Using EXPLICIT credentials from .env file (no IAM role fallback)');
     console.log('- Region:', process.env.AWS_REGION || 'us-east-1');
     console.log('- Access Key ID:', process.env.AWS_ACCESS_KEY_ID ? process.env.AWS_ACCESS_KEY_ID.substring(0, 10) + '...' : 'NOT SET');
     console.log('- Secret Key:', process.env.AWS_SECRET_ACCESS_KEY ? 'SET' : 'NOT SET');
@@ -132,10 +148,7 @@ class MultiRegionAWSService {
             const ec2 = new AWS.EC2({
               region,
               httpOptions: this.httpOptions,
-              credentials: new AWS.Credentials({
-                accessKeyId: process.env.AWS_ACCESS_KEY_ID,
-                secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY
-              })
+              credentials: this.awsCredentials
             });
             
             // Quick check - just get first page with max 5 results
@@ -201,18 +214,12 @@ class MultiRegionAWSService {
         this.regionClients.set(region, new AWS.EC2({
           region,
           httpOptions: this.httpOptions,
-          credentials: new AWS.Credentials({
-            accessKeyId: process.env.AWS_ACCESS_KEY_ID,
-            secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY
-          })
+          credentials: this.awsCredentials
         }));
         this.regionCloudWatchClients.set(region, new AWS.CloudWatch({
           region,
           httpOptions: this.httpOptions,
-          credentials: new AWS.Credentials({
-            accessKeyId: process.env.AWS_ACCESS_KEY_ID,
-            secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY
-          })
+          credentials: this.awsCredentials
         }));
         console.log(`✓ Initialized clients for region ${region}`);
       }

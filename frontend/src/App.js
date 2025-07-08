@@ -28,6 +28,7 @@ import NotificationConfig from './components/NotificationConfig';
 import SearchInstances from './components/SearchInstances';
 import WebsiteMonitoring from './pages/WebsiteMonitoring';
 import SSOCallback from './pages/SSOCallback';
+import SSOConfiguration from './pages/SSOConfiguration';
 import WebSocketService from './services/WebSocketService';
 import { API_ENDPOINTS } from './config/api';
 import './App.css';
@@ -210,6 +211,11 @@ function AppContent() {
       icon: <TeamOutlined />,
       label: 'User Management',
       path: '/users'
+    }, {
+      key: 'sso',
+      icon: <SettingOutlined />,
+      label: 'SSO Configuration',
+      path: '/sso'
     }] : [])
   ];
 
@@ -378,6 +384,14 @@ function AppContent() {
               element={
                 <ProtectedRoute requiredPermission="manage_users">
                   <UserManagement />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/sso"
+              element={
+                <ProtectedRoute requiredPermission="manage_users">
+                  <SSOConfiguration />
                 </ProtectedRoute>
               }
             />
