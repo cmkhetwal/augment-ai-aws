@@ -46,8 +46,12 @@ const SearchInstances = ({ onInstanceSelect, showMetrics = true }) => {
       });
       const data = await response.json();
 
+      console.log('Fetched instances for autocomplete:', data); // Debug logging
+
       if (data.instances) {
         setAllInstances(data.instances);
+      } else {
+        console.warn('No instances property in response:', data);
       }
     } catch (error) {
       console.error('Error fetching instances for autocomplete:', error);
@@ -124,16 +128,22 @@ const SearchInstances = ({ onInstanceSelect, showMetrics = true }) => {
 
     setLoading(true);
     try {
-      const response = await fetch(`${API_ENDPOINTS.INSTANCES}?search=${encodeURIComponent(searchValue)}`, {
+      // Use the search endpoint instead of instances endpoint
+      const response = await fetch(`${API_ENDPOINTS.SEARCH}?q=${encodeURIComponent(searchValue)}&type=instances`, {
         headers: {
           'Authorization': `Bearer ${token}`,
         },
       });
       const data = await response.json();
-      
+
+      console.log('Search API response:', data); // Debug logging
+
       if (data.results) {
         setSearchResults(data.results);
         saveSearchHistory(searchValue);
+      } else {
+        console.warn('No results property in search response:', data);
+        setSearchResults([]);
       }
     } catch (error) {
       console.error('Search error:', error);
