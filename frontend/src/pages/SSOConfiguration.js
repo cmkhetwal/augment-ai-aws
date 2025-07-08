@@ -5,7 +5,7 @@ import {
 } from 'antd';
 import {
   SettingOutlined, GoogleOutlined, WindowsOutlined, SafetyOutlined,
-  CheckCircleOutlined, CloseCircleOutlined, TestOutlined, SaveOutlined
+  CheckCircleOutlined, CloseCircleOutlined, ExperimentOutlined, SaveOutlined
 } from '@ant-design/icons';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -161,7 +161,7 @@ const SSOConfiguration = () => {
           {record.enabled && (
             <Button
               size="small"
-              icon={<TestOutlined />}
+              icon={<ExperimentOutlined />}
               onClick={() => testProvider(record.id)}
               loading={loading}
             >
