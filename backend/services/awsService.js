@@ -1,10 +1,15 @@
 const AWS = require('aws-sdk');
 
-// Configure AWS with explicit credentials
+// Configure AWS with explicit credentials and disable IAM role
 AWS.config.update({
   region: process.env.AWS_REGION || 'us-east-1',
   accessKeyId: process.env.AWS_ACCESS_KEY_ID,
-  secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY
+  secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
+  // Explicitly disable IAM role and metadata service
+  credentials: new AWS.Credentials({
+    accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY
+  })
 });
 
 console.log('AWS Configuration:');

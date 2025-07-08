@@ -3,11 +3,16 @@ const NodeCache = require('node-cache');
 
 class MultiRegionAWSService {
   constructor() {
-    // Configure AWS with explicit credentials (base region for getting regions list)
+    // Configure AWS with explicit credentials and disable IAM role
     AWS.config.update({
       region: process.env.AWS_REGION || 'us-east-1',
       accessKeyId: process.env.AWS_ACCESS_KEY_ID,
       secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
+      // Explicitly disable IAM role and metadata service
+      credentials: new AWS.Credentials({
+        accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+        secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY
+      }),
       maxRetries: 3,
       retryDelayOptions: {
         customBackoff: function(retryCount) {
@@ -15,6 +20,11 @@ class MultiRegionAWSService {
         }
       }
     });
+
+    console.log('AWS Multi-Region Configuration:');
+    console.log('- Region:', process.env.AWS_REGION || 'us-east-1');
+    console.log('- Access Key ID:', process.env.AWS_ACCESS_KEY_ID ? process.env.AWS_ACCESS_KEY_ID.substring(0, 10) + '...' : 'NOT SET');
+    console.log('- Secret Key:', process.env.AWS_SECRET_ACCESS_KEY ? 'SET' : 'NOT SET');
 
     // Connection pooling configuration
     this.httpOptions = {
@@ -119,7 +129,14 @@ class MultiRegionAWSService {
         
         const batchPromises = regionBatch.map(async (region) => {
           try {
-            const ec2 = new AWS.EC2({ region, httpOptions: this.httpOptions });
+            const ec2 = new AWS.EC2({
+              region,
+              httpOptions: this.httpOptions,
+              credentials: new AWS.Credentials({
+                accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+                secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY
+              })
+            });
             
             // Quick check - just get first page with max 5 results
             const params = { MaxResults: 5 };
@@ -181,13 +198,21 @@ class MultiRegionAWSService {
     
     regions.forEach(region => {
       if (!this.regionClients.has(region)) {
-        this.regionClients.set(region, new AWS.EC2({ 
-          region, 
-          httpOptions: this.httpOptions 
+        this.regionClients.set(region, new AWS.EC2({
+          region,
+          httpOptions: this.httpOptions,
+          credentials: new AWS.Credentials({
+            accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+            secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY
+          })
         }));
-        this.regionCloudWatchClients.set(region, new AWS.CloudWatch({ 
-          region, 
-          httpOptions: this.httpOptions 
+        this.regionCloudWatchClients.set(region, new AWS.CloudWatch({
+          region,
+          httpOptions: this.httpOptions,
+          credentials: new AWS.Credentials({
+            accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+            secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY
+          })
         }));
         console.log(`✓ Initialized clients for region ${region}`);
       }
