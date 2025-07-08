@@ -142,6 +142,22 @@ router.post('/verify-token', async (req, res) => {
   }
 });
 
+// Verify token endpoint (for SAML callback)
+router.post('/verify-token', AuthService.authenticateToken.bind(AuthService), (req, res) => {
+  try {
+    res.json({
+      success: true,
+      user: req.user,
+      message: 'Token is valid'
+    });
+  } catch (error) {
+    res.status(401).json({
+      success: false,
+      error: 'Invalid token'
+    });
+  }
+});
+
 // Logout endpoint (client-side token removal)
 router.post('/logout', AuthService.authenticateToken.bind(AuthService), (req, res) => {
   res.json({ message: 'Logged out successfully' });

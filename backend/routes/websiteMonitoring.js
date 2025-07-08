@@ -51,6 +51,39 @@ router.post('/websites', authService.authenticateToken.bind(authService), async 
   }
 });
 
+// Update a website
+router.put('/websites/:websiteId', authService.authenticateToken.bind(authService), async (req, res) => {
+  try {
+    const { websiteId } = req.params;
+    const { url, name, checkInterval, alertThreshold } = req.body;
+
+    if (!url || !name) {
+      return res.status(400).json({
+        success: false,
+        error: 'URL and name are required'
+      });
+    }
+
+    const website = await websiteMonitoringService.updateWebsite(websiteId, {
+      url,
+      name,
+      checkInterval,
+      alertThreshold
+    });
+
+    res.json({
+      success: true,
+      website,
+      message: 'Website updated successfully'
+    });
+  } catch (error) {
+    res.status(400).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
 // Remove a website from monitoring
 router.delete('/websites/:websiteId', authService.authenticateToken.bind(authService), async (req, res) => {
   try {

@@ -19,7 +19,6 @@ export const API_ENDPOINTS = {
   CURRENT_USER: `${API_BASE_URL}/api/auth/me`,
   USERS: `${API_BASE_URL}/api/auth/users`,
   INSTANCES: `${API_BASE_URL}/api/instances`,
-  SEARCH: `${API_BASE_URL}/api/search`,
   PING: `${API_BASE_URL}/api/ping`,
   METRICS: `${API_BASE_URL}/api/metrics`,
   PORTS: `${API_BASE_URL}/api/ports`,

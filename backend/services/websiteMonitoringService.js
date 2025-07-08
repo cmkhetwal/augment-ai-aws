@@ -2,6 +2,7 @@ const axios = require('axios');
 const https = require('https');
 const crypto = require('crypto');
 const dns = require('dns').promises;
+const notificationService = require('./notificationService');
 
 class WebsiteMonitoringService {
   constructor() {
@@ -56,6 +57,38 @@ class WebsiteMonitoringService {
     // Perform initial check
     await this.checkWebsite(websiteId);
     
+    return website;
+  }
+
+  // Update a website
+  async updateWebsite(websiteId, updateData) {
+    const website = this.monitoredSites.get(websiteId);
+    if (!website) {
+      throw new Error('Website not found');
+    }
+
+    const { url, name, checkInterval, alertThreshold } = updateData;
+
+    if (!url || !name) {
+      throw new Error('URL and name are required');
+    }
+
+    // Validate URL format
+    try {
+      new URL(url);
+    } catch (error) {
+      throw new Error('Invalid URL format');
+    }
+
+    // Update website properties
+    website.url = url;
+    website.name = name;
+    website.checkInterval = checkInterval || 300000;
+    website.alertThreshold = alertThreshold || 5000;
+    website.updatedAt = new Date();
+
+    this.monitoredSites.set(websiteId, website);
+
     return website;
   }
 
@@ -146,9 +179,43 @@ class WebsiteMonitoringService {
 
       // Calculate uptime percentage (last 24 hours)
       results.uptime = this.calculateUptime(results.checks);
+
+      // Send alerts based on status changes and SSL expiry
+      await this.checkAndSendAlerts(website, checkResult, results);
     }
 
     return checkResult;
+  }
+
+  // Check and send alerts based on website status and SSL expiry
+  async checkAndSendAlerts(website, checkResult, results) {
+    try {
+      // Get previous status from checks history
+      const previousStatus = results.checks.length > 1 ? results.checks[1].status : null;
+      const currentStatus = checkResult.status;
+
+      // Website down alert
+      if (currentStatus === 'down' && previousStatus !== 'down') {
+        await notificationService.sendWebsiteDownAlert(website, checkResult);
+      }
+
+      // Website recovery alert
+      if (currentStatus === 'up' && previousStatus === 'down') {
+        await notificationService.sendWebsiteUpAlert(website, checkResult);
+      }
+
+      // SSL certificate expiry alerts
+      if (checkResult.sslInfo && checkResult.sslInfo.valid && checkResult.sslInfo.daysUntilExpiry) {
+        const daysUntilExpiry = checkResult.sslInfo.daysUntilExpiry;
+
+        // Send alerts at 30, 14, 7, 3, and 1 days before expiry
+        if ([30, 14, 7, 3, 1].includes(daysUntilExpiry)) {
+          await notificationService.sendSSLExpiryAlert(website, checkResult.sslInfo);
+        }
+      }
+    } catch (error) {
+      console.error('Error sending alerts:', error);
+    }
   }
 
   // Check DNS resolution
@@ -223,57 +290,71 @@ class WebsiteMonitoringService {
   // Check SSL certificate
   async checkSSL(hostname, port = 443) {
     return new Promise((resolve) => {
-      const options = {
+      const tls = require('tls');
+
+      const socket = tls.connect({
         host: hostname,
         port: port,
-        method: 'GET',
-        rejectUnauthorized: false
-      };
+        servername: hostname,
+        rejectUnauthorized: false,
+        timeout: 10000
+      });
 
-      const req = https.request(options, (res) => {
-        const cert = res.connection.getPeerCertificate();
-        
-        if (cert && Object.keys(cert).length > 0) {
-          const now = new Date();
-          const validFrom = new Date(cert.valid_from);
-          const validTo = new Date(cert.valid_to);
-          const daysUntilExpiry = Math.floor((validTo - now) / (1000 * 60 * 60 * 24));
-          
-          resolve({
-            valid: true,
-            issuer: cert.issuer,
-            subject: cert.subject,
-            validFrom: validFrom,
-            validTo: validTo,
-            daysUntilExpiry: daysUntilExpiry,
-            fingerprint: cert.fingerprint,
-            serialNumber: cert.serialNumber,
-            algorithm: cert.sigalg
-          });
-        } else {
+      socket.on('secureConnect', () => {
+        try {
+          const cert = socket.getPeerCertificate(true);
+
+          if (cert && cert.subject) {
+            const now = new Date();
+            const validFrom = new Date(cert.valid_from);
+            const validTo = new Date(cert.valid_to);
+            const daysUntilExpiry = Math.ceil((validTo - now) / (1000 * 60 * 60 * 24));
+
+            socket.destroy();
+            resolve({
+              valid: now >= validFrom && now <= validTo,
+              issuer: cert.issuer,
+              subject: cert.subject,
+              validFrom: validFrom,
+              validTo: validTo,
+              daysUntilExpiry: daysUntilExpiry,
+              fingerprint: cert.fingerprint,
+              serialNumber: cert.serialNumber,
+              algorithm: cert.sigalg || cert.signatureAlgorithm
+            });
+          } else {
+            socket.destroy();
+            resolve({
+              valid: false,
+              error: 'No certificate found'
+            });
+          }
+        } catch (error) {
+          socket.destroy();
           resolve({
             valid: false,
-            error: 'No certificate found'
+            error: `SSL parsing error: ${error.message}`
           });
         }
       });
 
-      req.on('error', (error) => {
+      socket.on('error', (error) => {
+        socket.destroy();
         resolve({
           valid: false,
-          error: error.message
+          error: `SSL connection error: ${error.message}`
         });
       });
 
-      req.setTimeout(10000, () => {
-        req.destroy();
+      socket.on('timeout', () => {
+        socket.destroy();
         resolve({
           valid: false,
           error: 'SSL check timeout'
         });
       });
 
-      req.end();
+      socket.setTimeout(10000);
     });
   }
 

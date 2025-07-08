@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Form, Input, Button, Card, Typography, Alert, Space, Divider } from 'antd';
-import { UserOutlined, LockOutlined, LoginOutlined } from '@ant-design/icons';
+import { UserOutlined, LockOutlined, LoginOutlined, SecurityScanOutlined } from '@ant-design/icons';
 import { useAuth } from '../contexts/AuthContext';
 import SSOLogin from './SSOLogin';
 
@@ -25,12 +25,7 @@ const Login = () => {
     }
   };
 
-  const fillDefaultCredentials = () => {
-    form.setFieldsValue({
-      identifier: 'admin',
-      password: 'admin'
-    });
-  };
+
 
   return (
     <div style={{
@@ -59,26 +54,7 @@ const Login = () => {
           </Text>
         </div>
 
-        <Alert
-          message="Default Admin Credentials"
-          description={
-            <div>
-              <Text>Username: <strong>admin</strong></Text><br />
-              <Text>Password: <strong>admin</strong></Text><br />
-              <Text type="secondary" style={{ fontSize: '12px' }}>
-                You will be required to change the password on first login
-              </Text>
-            </div>
-          }
-          type="info"
-          showIcon
-          style={{ marginBottom: '20px' }}
-          action={
-            <Button size="small" type="link" onClick={fillDefaultCredentials}>
-              Fill Form
-            </Button>
-          }
-        />
+
 
         <Form
           form={form}
@@ -141,6 +117,22 @@ const Login = () => {
 
         {/* SSO Login Options */}
         <SSOLogin loading={loading} />
+
+        {/* SAML Login Option */}
+        <div style={{ marginTop: '16px' }}>
+          <Button
+            block
+            icon={<SecurityScanOutlined />}
+            onClick={() => window.location.href = '/api/auth/saml/login'}
+            style={{
+              height: '40px',
+              borderColor: '#1890ff',
+              color: '#1890ff'
+            }}
+          >
+            Sign in with SAML
+          </Button>
+        </div>
 
         <Divider />
 

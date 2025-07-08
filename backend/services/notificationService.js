@@ -307,6 +307,89 @@ class NotificationService {
     console.log('Notification configuration updated');
   }
 
+  // Website monitoring specific alerts
+  async sendWebsiteDownAlert(website, result) {
+    const alertKey = `website_down_${website.id}`;
+    if (this.alertCache.get(alertKey)) {
+      return; // Prevent spam
+    }
+
+    this.alertCache.set(alertKey, true);
+
+    const alert = {
+      instanceId: website.id,
+      type: 'website_down',
+      severity: 'critical',
+      title: `🚨 Website Down: ${website.name}`,
+      message: `Website ${website.name} (${website.url}) is down.\nStatus: ${result.status}\nError: ${result.error || 'Unknown error'}\nResponse Time: ${result.responseTime}ms`,
+      timestamp: new Date().toISOString(),
+      metadata: {
+        website: website.name,
+        url: website.url,
+        status: result.status,
+        responseTime: result.responseTime,
+        error: result.error
+      }
+    };
+
+    await this.sendAlert(alert);
+  }
+
+  async sendWebsiteUpAlert(website, result) {
+    const alertKey = `website_up_${website.id}`;
+    if (this.alertCache.get(alertKey)) {
+      return; // Prevent spam
+    }
+
+    this.alertCache.set(alertKey, true);
+
+    const alert = {
+      instanceId: website.id,
+      type: 'website_up',
+      severity: 'info',
+      title: `✅ Website Recovered: ${website.name}`,
+      message: `Website ${website.name} (${website.url}) is back online.\nStatus: ${result.status}\nResponse Time: ${result.responseTime}ms`,
+      timestamp: new Date().toISOString(),
+      metadata: {
+        website: website.name,
+        url: website.url,
+        status: result.status,
+        responseTime: result.responseTime
+      }
+    };
+
+    await this.sendAlert(alert);
+  }
+
+  async sendSSLExpiryAlert(website, sslInfo) {
+    const alertKey = `ssl_expiry_${website.id}_${sslInfo.daysUntilExpiry}`;
+    if (this.alertCache.get(alertKey)) {
+      return; // Prevent spam
+    }
+
+    this.alertCache.set(alertKey, true);
+
+    const urgency = sslInfo.daysUntilExpiry <= 7 ? '🚨' : sslInfo.daysUntilExpiry <= 30 ? '⚠️' : '🔒';
+    const severity = sslInfo.daysUntilExpiry <= 7 ? 'critical' : sslInfo.daysUntilExpiry <= 30 ? 'warning' : 'info';
+
+    const alert = {
+      instanceId: website.id,
+      type: 'ssl_expiry',
+      severity: severity,
+      title: `${urgency} SSL Certificate Expiring: ${website.name}`,
+      message: `SSL certificate for ${website.name} (${website.url}) expires in ${sslInfo.daysUntilExpiry} days.\nExpiry Date: ${new Date(sslInfo.validTo).toLocaleDateString()}`,
+      timestamp: new Date().toISOString(),
+      metadata: {
+        website: website.name,
+        url: website.url,
+        daysUntilExpiry: sslInfo.daysUntilExpiry,
+        expiryDate: sslInfo.validTo
+      }
+    };
+
+    await this.sendAlert(alert);
+  }
+
   getConfig() {
     // Return config without sensitive data
     return {

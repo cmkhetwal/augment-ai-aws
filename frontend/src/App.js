@@ -25,10 +25,11 @@ import PingMonitor from './pages/PingMonitor';
 import SystemMetrics from './pages/SystemMetrics';
 import PortScanner from './pages/PortScanner';
 import NotificationConfig from './components/NotificationConfig';
-import SearchInstances from './components/SearchInstances';
+
 import WebsiteMonitoring from './pages/WebsiteMonitoring';
 import SSOCallback from './pages/SSOCallback';
 import SSOConfiguration from './pages/SSOConfiguration';
+import SAMLCallback from './pages/SAMLCallback';
 import WebSocketService from './services/WebSocketService';
 import { API_ENDPOINTS } from './config/api';
 import './App.css';
@@ -164,12 +165,7 @@ function AppContent() {
       label: 'Dashboard',
       path: '/'
     },
-    {
-      key: 'search',
-      icon: <SearchOutlined />,
-      label: 'Search Instances',
-      path: '/search'
-    },
+
     {
       key: 'instances',
       icon: <CloudServerOutlined />,
@@ -351,10 +347,7 @@ function AppContent() {
               path="/"
               element={<DashboardEnhanced data={monitoringData} />}
             />
-            <Route
-              path="/search"
-              element={<SearchInstances showMetrics={true} />}
-            />
+
             <Route
               path="/instances"
               element={<Instances data={monitoringData} />}
@@ -413,6 +406,7 @@ function App() {
         <Routes>
           {/* Public routes */}
           <Route path="/sso-callback" element={<SSOCallback />} />
+          <Route path="/saml-callback" element={<SAMLCallback />} />
 
           {/* Protected routes */}
           <Route path="/*" element={

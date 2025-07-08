@@ -7,7 +7,8 @@ import {
   GlobalOutlined, CheckCircleOutlined, CloseCircleOutlined,
   ExclamationCircleOutlined, PlusOutlined, ReloadOutlined,
   DeleteOutlined, EyeOutlined, SecurityScanOutlined,
-  ClockCircleOutlined, ThunderboltOutlined
+  ClockCircleOutlined, ThunderboltOutlined, SortAscendingOutlined,
+  EditOutlined
 } from '@ant-design/icons';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -19,9 +20,12 @@ const WebsiteMonitoring = () => {
   const [stats, setStats] = useState({});
   const [loading, setLoading] = useState(false);
   const [addModalVisible, setAddModalVisible] = useState(false);
+  const [editModalVisible, setEditModalVisible] = useState(false);
   const [detailsModalVisible, setDetailsModalVisible] = useState(false);
   const [selectedWebsite, setSelectedWebsite] = useState(null);
+  const [editingWebsite, setEditingWebsite] = useState(null);
   const [form] = Form.useForm();
+  const [editForm] = Form.useForm();
   const { token } = useAuth();
 
   // Fetch data on component mount
@@ -91,9 +95,13 @@ const WebsiteMonitoring = () => {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`
         },
-        body: JSON.stringify(values)
+        body: JSON.stringify({
+          ...values,
+          checkInterval: values.checkInterval * 60000, // Convert minutes to milliseconds
+          alertThreshold: values.alertThreshold * 1000  // Convert seconds to milliseconds
+        })
       });
-      
+
       const data = await response.json();
       if (data.success) {
         message.success('Website added successfully');
@@ -106,6 +114,40 @@ const WebsiteMonitoring = () => {
       }
     } catch (error) {
       message.error('Error adding website');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const editWebsite = async (values) => {
+    try {
+      setLoading(true);
+      const response = await fetch(`/api/website-monitoring/websites/${editingWebsite.id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          ...values,
+          checkInterval: values.checkInterval * 60000, // Convert minutes to milliseconds
+          alertThreshold: values.alertThreshold * 1000  // Convert seconds to milliseconds
+        })
+      });
+
+      const data = await response.json();
+      if (data.success) {
+        message.success('Website updated successfully');
+        setEditModalVisible(false);
+        setEditingWebsite(null);
+        editForm.resetFields();
+        fetchWebsites();
+        fetchResults();
+      } else {
+        message.error(data.error || 'Failed to update website');
+      }
+    } catch (error) {
+      message.error('Error updating website');
     } finally {
       setLoading(false);
     }
@@ -159,6 +201,17 @@ const WebsiteMonitoring = () => {
     setDetailsModalVisible(true);
   };
 
+  const showEdit = (website) => {
+    setEditingWebsite(website);
+    editForm.setFieldsValue({
+      name: website.name,
+      url: website.url,
+      checkInterval: Math.floor(website.checkInterval / 60000), // Convert milliseconds to minutes
+      alertThreshold: Math.floor(website.alertThreshold / 1000)  // Convert milliseconds to seconds
+    });
+    setEditModalVisible(true);
+  };
+
   // Helper functions
   const getStatusColor = (status) => {
     switch (status) {
@@ -183,12 +236,21 @@ const WebsiteMonitoring = () => {
     return time < 1000 ? `${time}ms` : `${(time / 1000).toFixed(2)}s`;
   };
 
+  // Prepare websites with results for table
+  const getWebsitesWithResults = () => {
+    return websites.map(website => {
+      const result = results.find(r => r.websiteId === website.id);
+      return { ...website, result };
+    });
+  };
+
   // Table columns
   const columns = [
     {
       title: 'Website',
       dataIndex: 'name',
       key: 'name',
+      sorter: (a, b) => a.name.localeCompare(b.name),
       render: (name, record) => (
         <div>
           <div style={{ fontWeight: 'bold' }}>{name}</div>
@@ -199,8 +261,14 @@ const WebsiteMonitoring = () => {
     {
       title: 'Status',
       key: 'status',
+      sorter: (a, b) => {
+        const statusA = a.result?.status || 'pending';
+        const statusB = b.result?.status || 'pending';
+        const statusOrder = { 'down': 0, 'checking': 1, 'pending': 2, 'up': 3 };
+        return (statusOrder[statusA] || 2) - (statusOrder[statusB] || 2);
+      },
       render: (_, record) => {
-        const result = results.find(r => r.websiteId === record.id);
+        const result = record.result || results.find(r => r.websiteId === record.id);
         const status = result?.status || 'pending';
         return (
           <Space>
@@ -215,12 +283,17 @@ const WebsiteMonitoring = () => {
     {
       title: 'Response Time',
       key: 'responseTime',
+      sorter: (a, b) => {
+        const responseTimeA = a.result?.responseTime || 0;
+        const responseTimeB = b.result?.responseTime || 0;
+        return responseTimeA - responseTimeB;
+      },
       render: (_, record) => {
-        const result = results.find(r => r.websiteId === record.id);
+        const result = record.result || results.find(r => r.websiteId === record.id);
         const responseTime = result?.responseTime || 0;
         return (
-          <Text style={{ 
-            color: responseTime > 3000 ? '#f5222d' : responseTime > 1000 ? '#faad14' : '#52c41a' 
+          <Text style={{
+            color: responseTime > 3000 ? '#f5222d' : responseTime > 1000 ? '#faad14' : '#52c41a'
           }}>
             {formatResponseTime(responseTime)}
           </Text>
@@ -230,14 +303,19 @@ const WebsiteMonitoring = () => {
     {
       title: 'Uptime',
       key: 'uptime',
+      sorter: (a, b) => {
+        const uptimeA = a.result?.uptime || 100;
+        const uptimeB = b.result?.uptime || 100;
+        return uptimeA - uptimeB;
+      },
       render: (_, record) => {
-        const result = results.find(r => r.websiteId === record.id);
+        const result = record.result || results.find(r => r.websiteId === record.id);
         const uptime = result?.uptime || 100;
         return (
           <div style={{ width: '80px' }}>
-            <Progress 
-              percent={uptime} 
-              size="small" 
+            <Progress
+              percent={uptime}
+              size="small"
               status={uptime < 95 ? 'exception' : uptime < 99 ? 'active' : 'success'}
               format={percent => `${percent}%`}
             />
@@ -248,25 +326,30 @@ const WebsiteMonitoring = () => {
     {
       title: 'SSL',
       key: 'ssl',
+      sorter: (a, b) => {
+        const sslA = a.result?.sslInfo?.daysUntilExpiry || 999;
+        const sslB = b.result?.sslInfo?.daysUntilExpiry || 999;
+        return sslA - sslB;
+      },
       render: (_, record) => {
-        const result = results.find(r => r.websiteId === record.id);
+        const result = record.result || results.find(r => r.websiteId === record.id);
         const sslInfo = result?.sslInfo;
-        
+
         if (!record.url.startsWith('https://')) {
           return <Text type="secondary">N/A</Text>;
         }
-        
+
         if (!sslInfo) {
           return <Tag color="default">Unknown</Tag>;
         }
-        
+
         if (!sslInfo.valid) {
           return <Tag color="red">Invalid</Tag>;
         }
-        
+
         const daysUntilExpiry = sslInfo.daysUntilExpiry;
         const color = daysUntilExpiry < 30 ? 'red' : daysUntilExpiry < 90 ? 'orange' : 'green';
-        
+
         return (
           <Tooltip title={`Expires: ${new Date(sslInfo.validTo).toLocaleDateString()}`}>
             <Tag color={color}>
@@ -279,8 +362,13 @@ const WebsiteMonitoring = () => {
     {
       title: 'Last Check',
       key: 'lastCheck',
+      sorter: (a, b) => {
+        const lastCheckA = a.result?.lastCheck ? new Date(a.result.lastCheck).getTime() : 0;
+        const lastCheckB = b.result?.lastCheck ? new Date(b.result.lastCheck).getTime() : 0;
+        return lastCheckB - lastCheckA; // Most recent first
+      },
       render: (_, record) => {
-        const result = results.find(r => r.websiteId === record.id);
+        const result = record.result || results.find(r => r.websiteId === record.id);
         const lastCheck = result?.lastCheck;
         return lastCheck ? new Date(lastCheck).toLocaleString() : 'Never';
       }
@@ -291,24 +379,31 @@ const WebsiteMonitoring = () => {
       render: (_, record) => (
         <Space>
           <Tooltip title="Check Now">
-            <Button 
-              icon={<ReloadOutlined />} 
-              size="small" 
+            <Button
+              icon={<ReloadOutlined />}
+              size="small"
               onClick={() => checkWebsite(record.id)}
               loading={loading}
             />
           </Tooltip>
+          <Tooltip title="Edit">
+            <Button
+              icon={<EditOutlined />}
+              size="small"
+              onClick={() => showEdit(record)}
+            />
+          </Tooltip>
           <Tooltip title="View Details">
-            <Button 
-              icon={<EyeOutlined />} 
-              size="small" 
+            <Button
+              icon={<EyeOutlined />}
+              size="small"
               onClick={() => showDetails(record)}
             />
           </Tooltip>
           <Tooltip title="Remove">
-            <Button 
-              icon={<DeleteOutlined />} 
-              size="small" 
+            <Button
+              icon={<DeleteOutlined />}
+              size="small"
               danger
               onClick={() => {
                 Modal.confirm({
@@ -329,15 +424,15 @@ const WebsiteMonitoring = () => {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
         <Title level={2}>Website Monitoring</Title>
         <Space>
-          <Button 
-            type="primary" 
-            icon={<PlusOutlined />} 
+          <Button
+            type="primary"
+            icon={<PlusOutlined />}
             onClick={() => setAddModalVisible(true)}
           >
             Add Website
           </Button>
-          <Button 
-            icon={<ReloadOutlined />} 
+          <Button
+            icon={<ReloadOutlined />}
             onClick={() => {
               fetchResults();
               fetchStats();
@@ -399,7 +494,7 @@ const WebsiteMonitoring = () => {
       <Card title="Monitored Websites">
         <Table
           columns={columns}
-          dataSource={websites}
+          dataSource={getWebsitesWithResults()}
           rowKey="id"
           pagination={{ pageSize: 10 }}
           loading={loading}
@@ -466,6 +561,74 @@ const WebsiteMonitoring = () => {
               </Button>
               <Button type="primary" htmlType="submit" loading={loading}>
                 Add Website
+              </Button>
+            </Space>
+          </Form.Item>
+        </Form>
+      </Modal>
+
+      {/* Edit Website Modal */}
+      <Modal
+        title="Edit Website"
+        open={editModalVisible}
+        onCancel={() => {
+          setEditModalVisible(false);
+          setEditingWebsite(null);
+          editForm.resetFields();
+        }}
+        footer={null}
+      >
+        <Form
+          form={editForm}
+          layout="vertical"
+          onFinish={editWebsite}
+        >
+          <Form.Item
+            name="name"
+            label="Website Name"
+            rules={[{ required: true, message: 'Please enter website name' }]}
+          >
+            <Input placeholder="My Website" />
+          </Form.Item>
+
+          <Form.Item
+            name="url"
+            label="URL"
+            rules={[
+              { required: true, message: 'Please enter URL' },
+              { type: 'url', message: 'Please enter a valid URL' }
+            ]}
+          >
+            <Input placeholder="https://example.com" />
+          </Form.Item>
+
+          <Form.Item
+            name="checkInterval"
+            label="Check Interval (minutes)"
+            rules={[{ required: true, message: 'Please enter check interval' }]}
+          >
+            <InputNumber min={1} max={60} style={{ width: '100%' }} />
+          </Form.Item>
+
+          <Form.Item
+            name="alertThreshold"
+            label="Alert Threshold (seconds)"
+            rules={[{ required: true, message: 'Please enter alert threshold' }]}
+          >
+            <InputNumber min={1} max={60} style={{ width: '100%' }} />
+          </Form.Item>
+
+          <Form.Item style={{ marginBottom: 0, textAlign: 'right' }}>
+            <Space>
+              <Button onClick={() => {
+                setEditModalVisible(false);
+                setEditingWebsite(null);
+                editForm.resetFields();
+              }}>
+                Cancel
+              </Button>
+              <Button type="primary" htmlType="submit" loading={loading}>
+                Update Website
               </Button>
             </Space>
           </Form.Item>

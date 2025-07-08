@@ -4,6 +4,8 @@ const WebSocket = require('ws');
 const http = require('http');
 const cron = require('node-cron');
 const path = require('path');
+const passport = require('passport');
+const session = require('express-session');
 
 // Load environment variables from parent directory
 require('dotenv').config({ path: path.resolve(__dirname, '../.env') });
@@ -21,9 +23,11 @@ const metricsService = require('./services/metricsService');
 const portScanService = require('./services/portScanService');
 const notificationService = require('./services/notificationService');
 const authService = require('./services/authService');
+const samlAuthService = require('./services/samlAuthService');
 
 // Import routes
 const authRoutes = require('./routes/auth');
+const samlAuthRoutes = require('./routes/samlAuth');
 
 const app = express();
 const server = http.createServer(app);
@@ -33,6 +37,29 @@ const PORT = process.env.PORT || 3001;
 
 app.use(cors());
 app.use(express.json());
+app.use(express.urlencoded({ extended: false }));
+
+// Session configuration for SAML
+app.use(session({
+  secret: process.env.SESSION_SECRET || 'your-session-secret',
+  resave: false,
+  saveUninitialized: false,
+  cookie: { secure: false } // Set to true in production with HTTPS
+}));
+
+// Initialize Passport
+app.use(passport.initialize());
+app.use(passport.session());
+
+// Passport serialization (required for sessions)
+passport.serializeUser((user, done) => {
+  done(null, user.id);
+});
+
+passport.deserializeUser((id, done) => {
+  const user = authService.users.find(u => u.id === id);
+  done(null, user);
+});
 
 // Health check endpoint
 app.get('/health', (req, res) => {
@@ -65,6 +92,9 @@ app.get('/health', (req, res) => {
 
 // Authentication routes
 app.use('/api/auth', authRoutes);
+
+// SAML authentication routes
+app.use('/api/auth/saml', samlAuthRoutes);
 
 // Website monitoring routes
 const websiteMonitoringRoutes = require('./routes/websiteMonitoring');
@@ -322,95 +352,7 @@ app.get('/api/dashboard', authService.authenticateToken.bind(authService), async
 // Enhanced search endpoint using SearchService
 const searchService = require('./services/searchService');
 
-app.get('/api/search', authService.authenticateToken.bind(authService), async (req, res) => {
-  try {
-    const { q, type = 'all', region = 'all', limit = 20 } = req.query;
 
-    if (!q || q.length < 1) {
-      return res.json({ results: [], suggestions: [] });
-    }
-
-    // Update search index with current instances
-    searchService.buildSearchIndex(monitoringData.instances);
-
-    // Perform search
-    const searchOptions = {
-      limit: parseInt(limit),
-      regions: region !== 'all' ? [region] : [],
-      includeOffline: true
-    };
-
-    const searchResults = searchService.search(q, searchOptions);
-    const suggestions = searchService.getSuggestions(q, 10);
-
-    // Format results for frontend
-    const formattedResults = searchResults.map(result => {
-      const instance = result.instance;
-      const instanceName = instance.Tags?.find(tag => tag.Key === 'Name')?.Value || instance.InstanceId;
-
-      // Get additional monitoring data
-      const pingResult = monitoringData.pingResults[instance.InstanceId];
-      const metrics = monitoringData.systemMetrics[instance.InstanceId];
-
-      return {
-        ...instance,
-        instanceName,
-        isOnline: pingResult?.alive || false,
-        metrics: metrics || {},
-        searchScore: result.score,
-        matchedFields: result.matchedFields,
-        relevance: result.relevance
-      };
-    });
-
-    res.json({
-      success: true,
-      results: formattedResults,
-      suggestions: suggestions,
-      query: q,
-      totalFound: searchResults.length,
-      searchStats: searchService.getSearchStats()
-    });
-  } catch (error) {
-    console.error('Enhanced search error:', error);
-    res.status(500).json({
-      success: false,
-      error: error.message,
-      results: [],
-      suggestions: []
-    });
-  }
-});
-
-// Search suggestions endpoint
-app.get('/api/search/suggestions', authService.authenticateToken.bind(authService), async (req, res) => {
-  try {
-    const { q, limit = 10 } = req.query;
-
-    if (!q || q.length < 1) {
-      return res.json({ suggestions: [] });
-    }
-
-    // Update search index
-    searchService.buildSearchIndex(monitoringData.instances);
-
-    // Get suggestions
-    const suggestions = searchService.getSuggestions(q, parseInt(limit));
-
-    res.json({
-      success: true,
-      suggestions: suggestions,
-      query: q
-    });
-  } catch (error) {
-    console.error('Search suggestions error:', error);
-    res.status(500).json({
-      success: false,
-      error: error.message,
-      suggestions: []
-    });
-  }
-});
 
 // Regions endpoint
 app.get('/api/regions', authService.authenticateToken.bind(authService), async (req, res) => {
