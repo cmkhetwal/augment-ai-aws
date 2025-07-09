@@ -32,7 +32,7 @@ class WebsiteMongoModel {
   }
 
   async ensureConnection() {
-    if (\!this.isConnected) {
+    if (!this.isConnected) {
       await this.initializeConnection();
     }
   }
@@ -44,7 +44,7 @@ class WebsiteMongoModel {
     const { url, name, checkInterval = 300000, alertThreshold = 5000, userId } = websiteData;
     
     // Validate required fields
-    if (\!url || \!name) {
+    if (!url || !name) {
       throw new Error('URL and name are required');
     }
 
@@ -107,13 +107,13 @@ class WebsiteMongoModel {
       query.userId = filters.userId;
     }
     
-    if (filters.isActive \!== undefined) {
+    if (filters.isActive !== undefined) {
       query.isActive = filters.isActive;
     }
     
     if (filters.search) {
       const searchRegex = new RegExp(filters.search, 'i');
-      query. = [
+      query.$or = [
         { name: searchRegex },
         { url: searchRegex }
       ];
@@ -144,7 +144,7 @@ class WebsiteMongoModel {
     const updateDoc = { updatedAt: new Date() };
     
     allowedFields.forEach(field => {
-      if (updateData[field] \!== undefined) {
+      if (updateData[field] !== undefined) {
         if (field === 'checkInterval' || field === 'alertThreshold') {
           updateDoc[field] = parseInt(updateData[field]);
         } else {
@@ -156,7 +156,7 @@ class WebsiteMongoModel {
     try {
       const result = await this.collection.updateOne(
         { id: websiteId },
-        { : updateDoc }
+        { $set: updateDoc }
       );
       
       if (result.matchedCount === 0) {
@@ -201,7 +201,7 @@ class WebsiteMongoModel {
     
     const dayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
     const recentlyAdded = await this.collection.countDocuments({
-      createdAt: { : dayAgo }
+      createdAt: { $gte: dayAgo }
     });
     
     return {
@@ -216,7 +216,7 @@ class WebsiteMongoModel {
   validateWebsiteData(data) {
     const errors = [];
 
-    if (\!data.url) {
+    if (!data.url) {
       errors.push('URL is required');
     } else {
       try {
@@ -226,7 +226,7 @@ class WebsiteMongoModel {
       }
     }
 
-    if (\!data.name || data.name.trim().length === 0) {
+    if (!data.name || data.name.trim().length === 0) {
       errors.push('Name is required');
     }
 
