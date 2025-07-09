@@ -346,7 +346,7 @@ function AppContent() {
           <Routes>
             <Route
               path="/"
-              element={<DashboardEnhanced data={monitoringData} />}
+              element={<DashboardEnhanced data={monitoringData} onRefresh={loadDataFromAPI} />}
             />
 
             <Route

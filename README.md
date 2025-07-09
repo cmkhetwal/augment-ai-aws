@@ -226,6 +226,97 @@ chmod +x deploy-stack.sh
 docker stack services aws-monitor
 ```
 
+## 📋 Stack Management
+
+### Stop the Stack
+```bash
+# Stop all services
+docker stack rm aws-monitor
+
+# Wait for services to stop completely
+sleep 15
+
+# Verify all services are stopped
+docker stack ls
+```
+
+### Database Backup
+```bash
+# Create backup directory
+mkdir -p backups/$(date +%Y%m%d_%H%M%S)
+
+# Backup MongoDB data
+docker exec $(docker ps --filter name=aws-monitor_mongodb --format "{{.ID}}") \
+  mongodump --host localhost --port 27017 \
+  --username admin --password password123 \
+  --authenticationDatabase admin \
+  --out /data/backup
+
+# Copy backup to host
+docker cp $(docker ps --filter name=aws-monitor_mongodb --format "{{.ID}}"):/data/backup \
+  ./backups/$(date +%Y%m%d_%H%M%S)/
+
+# Create compressed backup
+tar -czf backups/aws-monitor-backup-$(date +%Y%m%d_%H%M%S).tar.gz \
+  backups/$(date +%Y%m%d_%H%M%S)/
+```
+
+### Database Restore
+```bash
+# Extract backup
+tar -xzf backups/aws-monitor-backup-YYYYMMDD_HHMMSS.tar.gz
+
+# Copy backup to container
+docker cp backups/YYYYMMDD_HHMMSS/backup \
+  $(docker ps --filter name=aws-monitor_mongodb --format "{{.ID}}"):/data/restore
+
+# Restore database
+docker exec $(docker ps --filter name=aws-monitor_mongodb --format "{{.ID}}") \
+  mongorestore --host localhost --port 27017 \
+  --username admin --password password123 \
+  --authenticationDatabase admin \
+  --drop /data/restore
+```
+
+### Scale Services
+```bash
+# Scale frontend service (increase replicas)
+docker service scale aws-monitor_frontend=3
+
+# Scale backend service
+docker service scale aws-monitor_backend=2
+
+# Check scaling status
+docker service ls
+docker service ps aws-monitor_frontend
+```
+
+### Update and Redeploy
+```bash
+# Complete redeployment process
+docker stack rm aws-monitor
+docker system prune -a -f
+./build-images.sh
+./deploy-stack.sh
+
+# Check deployment
+docker stack services aws-monitor
+```
+
+### Monitor Resources
+```bash
+# Check service resource usage
+docker stats
+
+# Check service logs
+docker service logs aws-monitor_backend
+docker service logs aws-monitor_frontend
+docker service logs aws-monitor_mongodb
+
+# Check service details
+docker service inspect aws-monitor_backend
+```
+
 ## 🐛 Troubleshooting
 
 ### Common Issues

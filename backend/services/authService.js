@@ -1,5 +1,5 @@
 const jwt = require('jsonwebtoken');
-const User = require('../models/User');
+const User = require('../models/UserMongoModel');
 const nodemailer = require('nodemailer');
 
 class AuthService {
@@ -51,9 +51,9 @@ class AuthService {
 
   // Login user
   async login(identifier, password) {
-    const { isValid, user } = await User.validatePassword(identifier, password);
-    
-    if (!isValid) {
+    const user = await User.verifyPassword(identifier, password);
+
+    if (!user) {
       throw new Error('Invalid credentials');
     }
 
@@ -73,13 +73,13 @@ class AuthService {
   // Register new user (admin only)
   async register(userData, adminUser) {
     // Check if admin has permission to manage users
-    if (!User.hasPermission(adminUser, 'manage_users')) {
+    if (!adminUser.permissions.includes('manage_users')) {
       throw new Error('Insufficient permissions to create users');
     }
 
     // Validate required fields
     const { email, username, password, firstName, lastName, role, permissions } = userData;
-    
+
     if (!email || !username || !password || !firstName || !lastName) {
       throw new Error('All required fields must be provided');
     }
@@ -118,8 +118,8 @@ class AuthService {
 
     // For first-time password change (admin), skip current password validation
     if (!user.mustChangePassword) {
-      const { isValid } = await User.validatePassword(user.email, currentPassword);
-      if (!isValid) {
+      const validUser = await User.verifyPassword(user.email, currentPassword);
+      if (!validUser) {
         throw new Error('Current password is incorrect');
       }
     }
@@ -129,7 +129,7 @@ class AuthService {
       throw new Error('New password must be at least 6 characters long');
     }
 
-    await User.updatePassword(user.email, newPassword);
+    await User.updatePassword(userId, newPassword);
 
     // Generate new token with updated user info
     const updatedUser = await User.findById(userId);
@@ -231,16 +231,16 @@ class AuthService {
 
   // Get all users (admin only)
   async getAllUsers(requestingUser) {
-    if (!User.hasPermission(requestingUser, 'manage_users')) {
+    if (!requestingUser.permissions.includes('manage_users')) {
       throw new Error('Insufficient permissions to view users');
     }
 
-    return await User.getAllUsers();
+    return await User.findAll();
   }
 
   // Delete user (admin only)
   async deleteUser(userId, requestingUser) {
-    if (!User.hasPermission(requestingUser, 'manage_users')) {
+    if (!requestingUser.permissions.includes('manage_users')) {
       throw new Error('Insufficient permissions to delete users');
     }
 
@@ -254,7 +254,7 @@ class AuthService {
       throw new Error('Cannot delete your own account');
     }
 
-    const deleted = await User.deleteUser(user.email);
+    const deleted = await User.delete(userId);
     return { success: deleted, message: deleted ? 'User deleted successfully' : 'Failed to delete user' };
   }
 
@@ -272,7 +272,7 @@ class AuthService {
 
   // Check if user has specific permission
   checkPermission(user, permission) {
-    return User.hasPermission(user, permission);
+    return user.permissions && user.permissions.includes(permission);
   }
 
   // Middleware to check authentication
@@ -300,7 +300,7 @@ class AuthService {
         return res.status(401).json({ error: 'Authentication required' });
       }
 
-      if (!User.hasPermission(req.user, permission)) {
+      if (!req.user.permissions.includes(permission)) {
         return res.status(403).json({ error: `Insufficient permissions. Required: ${permission}` });
       }
 

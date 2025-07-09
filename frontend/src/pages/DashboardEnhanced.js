@@ -24,7 +24,7 @@ const { Title, Text } = Typography;
 const { Search } = Input;
 const { Option } = Select;
 
-const DashboardEnhanced = ({ data }) => {
+const DashboardEnhanced = ({ data, onRefresh }) => {
   const [sortBy, setSortBy] = useState('usage');
   const [searchTerm, setSearchTerm] = useState('');
   const [showOnlyProblems, setShowOnlyProblems] = useState(false);
@@ -481,16 +481,13 @@ const DashboardEnhanced = ({ data }) => {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
         <Title level={2}>Enhanced Dashboard</Title>
         <Space>
-          <Button 
-            icon={<ReloadOutlined />} 
-            onClick={async () => {
-              try {
-                const response = await fetch('/api/dashboard');
-                const data = await response.json();
-                console.log('Manual refresh - loaded instances:', data.instances?.length);
+          <Button
+            icon={<ReloadOutlined />}
+            onClick={() => {
+              if (onRefresh) {
+                onRefresh();
+              } else {
                 window.location.reload();
-              } catch (error) {
-                console.error('Manual refresh failed:', error);
               }
             }}
           >
@@ -732,7 +729,14 @@ const DashboardEnhanced = ({ data }) => {
           >
             <List
               size="small"
-              dataSource={filteredInstances.slice(0, 20)} // Show top 20
+              dataSource={filteredInstances}
+              pagination={{
+                pageSize: 10,
+                showSizeChanger: true,
+                showQuickJumper: true,
+                showTotal: (total, range) => `${range[0]}-${range[1]} of ${total} instances`,
+                size: 'small'
+              }}
               renderItem={instance => (
                 <List.Item>
                   <div style={{ display: 'flex', alignItems: 'center', width: '100%', justifyContent: 'space-between' }}>

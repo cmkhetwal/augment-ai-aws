@@ -3,45 +3,35 @@ const https = require('https');
 const crypto = require('crypto');
 const dns = require('dns').promises;
 const notificationService = require('./notificationService');
+const Website = require('../models/WebsiteMongoModel');
 
 class WebsiteMonitoringService {
   constructor() {
-    this.monitoredSites = new Map();
     this.monitoringResults = new Map();
     this.monitoringInterval = null;
+    this.initializeMonitoring();
+  }
+
+  // Initialize monitoring from database
+  async initializeMonitoring() {
+    try {
+      const websites = await Website.findActive();
+      console.log(`Initialized monitoring for ${websites.length} websites`);
+
+      // Start monitoring
+      this.startMonitoring();
+    } catch (error) {
+      console.error('Error initializing website monitoring:', error);
+    }
   }
 
   // Add a website to monitor
   async addWebsite(websiteData) {
-    const { url, name, checkInterval = 300000, alertThreshold = 5000 } = websiteData;
-    
-    if (!url || !name) {
-      throw new Error('URL and name are required');
-    }
+    const website = await Website.create(websiteData);
 
-    // Validate URL format
-    try {
-      new URL(url);
-    } catch (error) {
-      throw new Error('Invalid URL format');
-    }
-
-    const websiteId = crypto.randomUUID();
-    const website = {
-      id: websiteId,
-      url,
-      name,
-      checkInterval,
-      alertThreshold,
-      createdAt: new Date(),
-      isActive: true
-    };
-
-    this.monitoredSites.set(websiteId, website);
-    
     // Initialize monitoring results
-    this.monitoringResults.set(websiteId, {
-      websiteId,
+    this.monitoringResults.set(website.id, {
+      websiteId: website.id,
       status: 'pending',
       lastCheck: null,
       uptime: 100,
@@ -55,53 +45,27 @@ class WebsiteMonitoringService {
     });
 
     // Perform initial check
-    await this.checkWebsite(websiteId);
-    
+    await this.checkWebsite(website.id);
+
     return website;
   }
 
   // Update a website
   async updateWebsite(websiteId, updateData) {
-    const website = this.monitoredSites.get(websiteId);
-    if (!website) {
-      throw new Error('Website not found');
-    }
-
-    const { url, name, checkInterval, alertThreshold } = updateData;
-
-    if (!url || !name) {
-      throw new Error('URL and name are required');
-    }
-
-    // Validate URL format
-    try {
-      new URL(url);
-    } catch (error) {
-      throw new Error('Invalid URL format');
-    }
-
-    // Update website properties
-    website.url = url;
-    website.name = name;
-    website.checkInterval = checkInterval || 300000;
-    website.alertThreshold = alertThreshold || 5000;
-    website.updatedAt = new Date();
-
-    this.monitoredSites.set(websiteId, website);
-
+    const website = await Website.update(websiteId, updateData);
     return website;
   }
 
   // Remove a website from monitoring
-  removeWebsite(websiteId) {
-    const removed = this.monitoredSites.delete(websiteId);
+  async removeWebsite(websiteId) {
+    const removed = await Website.delete(websiteId);
     this.monitoringResults.delete(websiteId);
     return removed;
   }
 
   // Get all monitored websites
-  getMonitoredWebsites() {
-    return Array.from(this.monitoredSites.values());
+  async getMonitoredWebsites() {
+    return await Website.findAll();
   }
 
   // Get monitoring results for a specific website
@@ -398,14 +362,18 @@ class WebsiteMonitoringService {
 
     // Check all websites every 5 minutes
     this.monitoringInterval = setInterval(async () => {
-      const websites = Array.from(this.monitoredSites.keys());
-      
-      for (const websiteId of websites) {
-        try {
-          await this.checkWebsite(websiteId);
-        } catch (error) {
-          console.error(`Error checking website ${websiteId}:`, error);
+      try {
+        const websites = await Website.findActive();
+
+        for (const website of websites) {
+          try {
+            await this.checkWebsite(website.id);
+          } catch (error) {
+            console.error(`Error checking website ${website.id}:`, error);
+          }
         }
+      } catch (error) {
+        console.error('Error fetching websites for monitoring:', error);
       }
     }, 300000); // 5 minutes
 
