@@ -25,6 +25,10 @@ const notificationService = require('./services/notificationService');
 const authService = require('./services/authService');
 const samlAuthService = require('./services/samlAuthService');
 
+// Initialize MongoDB models
+const UserMongoModel = require('./models/UserMongoModel');
+const WebsiteMongoModel = require('./models/WebsiteMongoModel');
+
 // Import routes
 const authRoutes = require('./routes/auth');
 const samlAuthRoutes = require('./routes/samlAuth');
