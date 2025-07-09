@@ -249,7 +249,8 @@ const Instances = ({ data }) => {
             pageSize: 10,
             showSizeChanger: true,
             showQuickJumper: true,
-            showTotal: (total, range) => `${range[0]}-${range[1]} of ${total} instances`
+            showTotal: (total, range) => `${range[0]}-${range[1]} of ${total} instances`,
+            pageSizeOptions: ['5', '10', '20', '50', '100']
           }}
           scroll={{ x: 1200 }}
           size="middle"
