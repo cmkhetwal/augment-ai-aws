@@ -32,6 +32,7 @@ import SSOConfiguration from './pages/SSOConfiguration';
 import SAMLCallback from './pages/SAMLCallback';
 import WebSocketService from './services/WebSocketService';
 import { API_ENDPOINTS } from './config/api';
+import './styles/animations.css';
 import './App.css';
 
 const { Header, Sider, Content } = Layout;
@@ -169,13 +170,13 @@ function AppContent() {
     {
       key: 'instances',
       icon: <CloudServerOutlined />,
-      label: 'EC2 Instances',
+      label: 'Infrastructure',
       path: '/instances'
     },
     {
       key: 'ping',
       icon: <WifiOutlined />,
-      label: 'Ping Monitor',
+      label: 'Network Health',
       path: '/ping'
     },
     {
@@ -193,7 +194,7 @@ function AppContent() {
     {
       key: 'websites',
       icon: <GlobalOutlined />,
-      label: 'Website Monitoring',
+      label: 'Website Health',
       path: '/websites'
     },
     {
@@ -264,7 +265,7 @@ function AppContent() {
           color: 'white',
           fontWeight: 'bold'
         }}>
-          {collapsed ? 'EM' : 'EC2 Monitor'}
+          {collapsed ? 'PS' : 'PulseStack'}
         </div>
         <Menu
           theme="dark"
@@ -288,7 +289,7 @@ function AppContent() {
           boxShadow: '0 1px 4px rgba(0,21,41,.08)'
         }}>
           <Title level={3} style={{ margin: 0, color: '#001529' }}>
-            AWS EC2 Monitoring Dashboard
+            PulseStack - Infrastructure Monitor
           </Title>
           <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
             <div style={{ display: 'flex', alignItems: 'center' }}>

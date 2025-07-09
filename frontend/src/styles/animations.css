@@ -1,0 +1,244 @@
+/* PulseStack Animations */
+
+@keyframes pulse {
+  0% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(1.1);
+    opacity: 0.7;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+@keyframes heartbeat {
+  0%, 100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.1);
+  }
+}
+
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(30px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes float {
+  0%, 100% {
+    transform: translateY(0px) rotate(0deg);
+  }
+  33% {
+    transform: translateY(-15px) rotate(0.5deg);
+  }
+  66% {
+    transform: translateY(-8px) rotate(-0.5deg);
+  }
+}
+
+@keyframes glow {
+  0%, 100% {
+    box-shadow: 0 0 5px currentColor;
+  }
+  50% {
+    box-shadow: 0 0 20px currentColor, 0 0 30px currentColor;
+  }
+}
+
+@keyframes pulse-dot {
+  0%, 100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(1.2);
+    opacity: 0.8;
+  }
+}
+
+@keyframes pulse-wave {
+  0% {
+    transform: scale(0.8);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1.5);
+    opacity: 0;
+  }
+}
+
+@keyframes heartbeat-pulse {
+  0%, 100% {
+    stroke-width: 2;
+    opacity: 1;
+  }
+  15% {
+    stroke-width: 4;
+    opacity: 0.8;
+  }
+  30% {
+    stroke-width: 2;
+    opacity: 1;
+  }
+  45% {
+    stroke-width: 3;
+    opacity: 0.9;
+  }
+  60% {
+    stroke-width: 2;
+    opacity: 1;
+  }
+}
+
+@keyframes heartbeat-glow {
+  0%, 100% {
+    filter: drop-shadow(0 0 8px #ff4d4f);
+  }
+  50% {
+    filter: drop-shadow(0 0 15px #ff4d4f) drop-shadow(0 0 25px #ff6b6b);
+  }
+}
+
+/* PulseStack Brand Colors */
+:root {
+  --pulse-primary: #1890ff;
+  --pulse-success: #52c41a;
+  --pulse-danger: #ff4d4f;
+  --pulse-warning: #faad14;
+  --pulse-info: #13c2c2;
+  --pulse-dark: #001529;
+  --pulse-light: #f0f2f5;
+}
+
+/* Custom pulse animation classes */
+.pulse-animation {
+  animation: pulse 2s infinite;
+}
+
+.heartbeat-animation {
+  animation: heartbeat 1.5s infinite;
+}
+
+.fade-in-up {
+  animation: fadeInUp 0.6s ease-out;
+}
+
+.float-animation {
+  animation: float 20s ease-in-out infinite;
+}
+
+.glow-animation {
+  animation: glow 2s ease-in-out infinite;
+}
+
+.pulse-dot {
+  animation: pulse 2s infinite;
+}
+
+/* Global scrollbar prevention */
+* {
+  box-sizing: border-box;
+}
+
+html, body {
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  height: 100vh;
+  width: 100vw;
+}
+
+#root {
+  height: 100vh;
+  width: 100vw;
+  overflow: hidden;
+}
+
+/* Responsive Design */
+@media (max-width: 1200px) {
+  .login-container {
+    flex-direction: column !important;
+    align-items: center !important;
+    padding: 12px !important;
+    height: 100vh !important;
+    justify-content: center !important;
+    overflow: hidden !important;
+  }
+
+  .login-visualization {
+    max-width: 100% !important;
+    height: auto !important;
+    margin-bottom: 16px !important;
+    flex: none !important;
+  }
+
+  .login-card {
+    width: 100% !important;
+    max-width: 380px !important;
+    max-height: 60vh !important;
+    overflow: hidden !important;
+  }
+}
+
+@media (max-width: 768px) {
+  .login-canvas {
+    height: 120px !important;
+  }
+
+  .feature-highlights {
+    padding: 10px !important;
+  }
+
+  .login-card {
+    max-height: 70vh !important;
+  }
+}
+
+@media (max-width: 480px) {
+  .login-card {
+    margin: 0 !important;
+    border-radius: 12px !important;
+    max-height: 80vh !important;
+    width: calc(100vw - 24px) !important;
+  }
+
+  .login-canvas {
+    height: 100px !important;
+  }
+
+  .feature-highlights {
+    display: none !important;
+  }
+
+  .login-container {
+    padding: 8px !important;
+  }
+}
+
+/* PulseStack Logo Styles */
+.pulsestack-logo {
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  font-weight: bold;
+  background: linear-gradient(135deg, var(--pulse-primary) 0%, var(--pulse-success) 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.pulsestack-subtitle {
+  color: #8c8c8c;
+  font-weight: 500;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+}
