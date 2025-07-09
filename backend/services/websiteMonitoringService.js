@@ -80,7 +80,7 @@ class WebsiteMonitoringService {
 
   // Perform comprehensive website check
   async checkWebsite(websiteId) {
-    const website = this.monitoredSites.get(websiteId);
+    const website = await Website.findById(websiteId);
     if (!website || !website.isActive) {
       return null;
     }

@@ -4,12 +4,12 @@ const websiteMonitoringService = require('../services/websiteMonitoringService')
 const authService = require('../services/authService');
 
 // Get all monitored websites (READ permission required)
-router.get('/websites', 
-  authService.authenticateToken.bind(authService), 
+router.get('/websites',
+  authService.authenticateToken.bind(authService),
   authService.requirePermission('read'),
   async (req, res) => {
     try {
-      const websites = websiteMonitoringService.getMonitoredWebsites();
+      const websites = await websiteMonitoringService.getMonitoredWebsites();
       res.json({
         success: true,
         websites
@@ -103,7 +103,7 @@ router.delete('/websites/:websiteId',
   async (req, res) => {
     try {
       const { websiteId } = req.params;
-      const removed = websiteMonitoringService.removeWebsite(websiteId);
+      const removed = await websiteMonitoringService.removeWebsite(websiteId);
       
       if (!removed) {
         return res.status(404).json({
@@ -131,7 +131,7 @@ router.get('/results',
   authService.requirePermission('read'),
   async (req, res) => {
     try {
-      const results = websiteMonitoringService.getMonitoringResults();
+      const results = websiteMonitoringService.getAllResults();
       res.json({
         success: true,
         results
@@ -152,7 +152,7 @@ router.get('/results/:websiteId',
   async (req, res) => {
     try {
       const { websiteId } = req.params;
-      const result = websiteMonitoringService.getWebsiteResult(websiteId);
+      const result = websiteMonitoringService.getWebsiteResults(websiteId);
       
       if (!result) {
         return res.status(404).json({
