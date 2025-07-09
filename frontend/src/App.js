@@ -342,7 +342,12 @@ function AppContent() {
             </Dropdown>
           </div>
         </Header>
-        <Content style={{ padding: 24, background: '#f0f2f5', overflow: 'initial' }}>
+        <Content style={{
+          padding: 24,
+          background: '#f0f2f5',
+          overflow: 'auto',
+          height: 'calc(100vh - 64px)' // Subtract header height
+        }}>
           <Routes>
             <Route
               path="/"
