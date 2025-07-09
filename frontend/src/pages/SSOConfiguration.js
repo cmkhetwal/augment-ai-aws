@@ -224,7 +224,7 @@ const SSOConfiguration = () => {
                     <li>Create a new project or select an existing one</li>
                     <li>Enable the Google+ API</li>
                     <li>Go to "Credentials" and create an OAuth 2.0 Client ID</li>
-                    <li>Set the authorized redirect URI to: <code>http://54.172.68.115/api/sso/callback/google</code></li>
+                    <li>Set the authorized redirect URI to: <code>http://34.229.57.190/api/sso/callback/google</code></li>
                     <li>Copy the Client ID and Client Secret</li>
                     <li>Configure the provider above with these credentials</li>
                     <li>Set the workspace domain to: <code>bamko.net</code></li>
@@ -242,7 +242,7 @@ const SSOConfiguration = () => {
                     <li>Go to the <a href="https://portal.azure.com/" target="_blank" rel="noopener noreferrer">Azure Portal</a></li>
                     <li>Navigate to "Azure Active Directory" → "App registrations"</li>
                     <li>Click "New registration"</li>
-                    <li>Set the redirect URI to: <code>http://54.172.68.115/api/sso/callback/microsoft</code></li>
+                    <li>Set the redirect URI to: <code>http://34.229.57.190/api/sso/callback/microsoft</code></li>
                     <li>Copy the Application (client) ID</li>
                     <li>Go to "Certificates & secrets" and create a new client secret</li>
                     <li>Configure the provider above with these credentials</li>
@@ -261,7 +261,7 @@ const SSOConfiguration = () => {
                     <li>Go to "Applications" → "Applications"</li>
                     <li>Click "Create App Integration"</li>
                     <li>Select "OIDC - OpenID Connect" and "Web Application"</li>
-                    <li>Set the redirect URI to: <code>http://54.172.68.115/api/sso/callback/okta</code></li>
+                    <li>Set the redirect URI to: <code>http://34.229.57.190/api/sso/callback/okta</code></li>
                     <li>Copy the Client ID and Client Secret</li>
                     <li>Configure the provider above with these credentials</li>
                   </ol>

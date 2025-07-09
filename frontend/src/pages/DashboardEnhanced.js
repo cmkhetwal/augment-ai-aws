@@ -736,15 +736,9 @@ const DashboardEnhanced = ({ data, onRefresh }) => {
                 showQuickJumper: true,
                 showTotal: (total, range) => `${range[0]}-${range[1]} of ${total} instances`,
                 size: 'small',
-                pageSizeOptions: ['5', '10', '20', '50', '100'],
-                style: {
-                  marginTop: '16px',
-                  textAlign: 'center',
-                  padding: '8px 0'
-                }
+                pageSizeOptions: ['5', '10', '20', '50', '100']
               }}
               style={{
-                minHeight: '400px',
                 border: '1px solid #f0f0f0',
                 borderRadius: '6px',
                 padding: '8px'
