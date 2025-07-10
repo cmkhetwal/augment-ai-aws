@@ -1,4 +1,4 @@
-#!/bin/bash
+#\!/bin/bash
 
 # AWS EC2 Monitor - Docker Stack Deployment Script
 # This script deploys the AWS monitoring application using Docker Swarm
@@ -6,11 +6,11 @@
 set -e
 
 # Colors for output
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
-NC='\033[0m' # No Color
+RED="\033[0;31m"
+GREEN="\033[0;32m"
+YELLOW="\033[1;33m"
+BLUE="\033[0;34m"
+NC="\033[0m" # No Color
 
 # Configuration
 STACK_NAME=${STACK_NAME:-"aws-monitor"}
@@ -36,7 +36,7 @@ log_error() {
 
 # Check if Docker Swarm is initialized
 check_swarm() {
-    if ! docker info --format '{{.Swarm.LocalNodeState}}' | grep -q "active"; then
+    if \! docker info --format "{{.Swarm.LocalNodeState}}" | grep -q "active"; then
         log_warning "Docker Swarm is not initialized. Initializing now..."
         docker swarm init
         log_success "Docker Swarm initialized"
@@ -47,15 +47,16 @@ check_swarm() {
 
 # Check if environment file exists
 check_env_file() {
-    if [ ! -f "$ENV_FILE" ]; then
-        log_warning "Environment file $ENV_FILE not found. Creating from template..."
-        if [ -f ".env.example" ]; then
-            cp .env.example "$ENV_FILE"
+    if [ \! -f "$ENV_FILE" ]; then
+        log_warning "Environment file $ENV_FILE not found."
+        if [ -f ".env.template" ]; then
+            log_info "Creating $ENV_FILE from template..."
+            cp .env.template "$ENV_FILE"
             log_warning "Please edit $ENV_FILE with your AWS credentials and configuration"
             log_warning "Required variables: AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_REGION"
             read -p "Press Enter after updating the environment file..."
         else
-            log_error "No .env.example file found. Please create $ENV_FILE manually."
+            log_error "No .env.template file found. Please create $ENV_FILE manually."
             exit 1
         fi
     fi
@@ -65,7 +66,7 @@ check_env_file() {
 # Load environment variables
 load_env() {
     log_info "Loading environment variables from $ENV_FILE"
-    export $(grep -v '^#' "$ENV_FILE" | xargs)
+    export $(grep -v "^#" "$ENV_FILE" | xargs)
     
     # Validate required variables
     if [ -z "$AWS_ACCESS_KEY_ID" ] || [ -z "$AWS_SECRET_ACCESS_KEY" ]; then
@@ -77,85 +78,16 @@ load_env() {
     log_success "Environment variables loaded"
 }
 
-# Create nginx configuration
-create_nginx_config() {
-    log_info "Creating nginx configuration..."
-    
-    cat > nginx-loadbalancer.conf << 'EOF'
-events {
-    worker_connections 1024;
-}
-
-http {
-    upstream frontend {
-        server frontend:80;
-    }
-    
-    upstream backend {
-        server backend:3001;
-    }
-    
-    server {
-        listen 80;
-        server_name localhost;
-        
-        # Health check
-        location /health {
-            access_log off;
-            return 200 "healthy\n";
-            add_header Content-Type text/plain;
-        }
-        
-        # Frontend
-        location / {
-            proxy_pass http://frontend;
-            proxy_set_header Host $host;
-            proxy_set_header X-Real-IP $remote_addr;
-            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-            proxy_set_header X-Forwarded-Proto $scheme;
-        }
-        
-        # API
-        location /api {
-            proxy_pass http://backend;
-            proxy_set_header Host $host;
-            proxy_set_header X-Real-IP $remote_addr;
-            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-            proxy_set_header X-Forwarded-Proto $scheme;
-        }
-        
-        # WebSocket
-        location /ws {
-            proxy_pass http://backend;
-            proxy_http_version 1.1;
-            proxy_set_header Upgrade $http_upgrade;
-            proxy_set_header Connection "upgrade";
-            proxy_set_header Host $host;
-            proxy_set_header X-Real-IP $remote_addr;
-            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-            proxy_set_header X-Forwarded-Proto $scheme;
-        }
-    }
-}
-EOF
-    
-    # Create Docker config
-    docker config rm nginx_config 2>/dev/null || true
-    docker config create nginx_config nginx-loadbalancer.conf
-    
-    log_success "Nginx configuration created"
-}
-
-# Build images if they don't exist
+# Build images if they do not exist
 build_images() {
     log_info "Checking if images exist..."
     
-    if ! docker image inspect aws-monitor-backend:latest >/dev/null 2>&1; then
+    if \! docker image inspect aws-monitor-backend:latest >/dev/null 2>&1; then
         log_warning "Backend image not found. Building..."
         ./build-images.sh
     fi
     
-    if ! docker image inspect aws-monitor-frontend:latest >/dev/null 2>&1; then
+    if \! docker image inspect aws-monitor-frontend:latest >/dev/null 2>&1; then
         log_warning "Frontend image not found. Building..."
         ./build-images.sh
     fi
@@ -193,7 +125,7 @@ wait_for_services() {
         local total_services=$(docker service ls --filter "label=com.docker.stack.namespace=$STACK_NAME" --quiet | wc -l)
         
         if [ "$ready_services" -eq "$total_services" ] && [ "$total_services" -gt 0 ]; then
-            log_success "All services are ready!"
+            log_success "All services are ready\!"
             break
         fi
         
@@ -220,11 +152,16 @@ show_status() {
     docker stack ps "$STACK_NAME"
     echo ""
     
-    log_info "Application URLs:"
-    echo "  Frontend: http://localhost:80"
+    log_info "Application Access:"
+    echo "  Frontend: http://localhost:3000 (or via reverse proxy)"
     echo "  Backend API: http://localhost:3001"
-    echo "  Health Check: http://localhost:80/health"
+    echo "  MongoDB: localhost:27017"
     echo ""
+    
+    log_info "Note: If using a reverse proxy (nginx/apache), configure it to:"
+    echo "  - Route / to http://localhost:3000 (frontend)"
+    echo "  - Route /api/* to http://localhost:3001 (backend API)"
+    echo "  - Route /ws to http://localhost:3001 (WebSocket)"
 }
 
 # Test deployment
@@ -235,9 +172,10 @@ test_deployment() {
     local max_attempts=10
     local attempt=1
     
+    # Test frontend
     while [ $attempt -le $max_attempts ]; do
-        if curl -f http://localhost:80/health >/dev/null 2>&1; then
-            log_success "Frontend health check passed"
+        if curl -f http://localhost:3000 >/dev/null 2>&1; then
+            log_success "Frontend is responding"
             break
         fi
         
@@ -246,10 +184,11 @@ test_deployment() {
         attempt=$((attempt + 1))
     done
     
+    # Test backend
     attempt=1
     while [ $attempt -le $max_attempts ]; do
-        if curl -f http://localhost:3001/health >/dev/null 2>&1; then
-            log_success "Backend health check passed"
+        if curl -f http://localhost:3001/api/health >/dev/null 2>&1; then
+            log_success "Backend API is responding"
             break
         fi
         
@@ -272,18 +211,19 @@ main() {
     check_swarm
     check_env_file
     load_env
-    create_nginx_config
     build_images
     deploy_stack
     wait_for_services
     show_status
     test_deployment
     
-    log_success "Deployment completed successfully!"
+    log_success "Deployment completed successfully\!"
     echo ""
-    log_info "To scale services: docker service scale ${STACK_NAME}_backend=3"
-    log_info "To update stack: docker stack deploy -c $COMPOSE_FILE $STACK_NAME"
-    log_info "To remove stack: docker stack rm $STACK_NAME"
+    log_info "Management Commands:"
+    log_info "  Scale services: docker service scale ${STACK_NAME}_backend=3"
+    log_info "  Update stack: docker stack deploy -c $COMPOSE_FILE $STACK_NAME"
+    log_info "  Remove stack: docker stack rm $STACK_NAME"
+    log_info "  View logs: docker service logs ${STACK_NAME}_backend"
 }
 
 # Help function

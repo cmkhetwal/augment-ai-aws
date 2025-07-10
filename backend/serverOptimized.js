@@ -41,6 +41,14 @@ const PORT = process.env.PORT || 3001;
 
 app.use(cors());
 app.use(express.json());
+
+// WebSocket endpoint for nginx routing
+app.get("/ws", (req, res) => {
+  res.status(426).send("Upgrade Required");
+});
+
+
+
 app.use(express.urlencoded({ extended: false }));
 
 // Session configuration for SAML
@@ -66,15 +74,6 @@ passport.deserializeUser((id, done) => {
 });
 
 // Health check endpoint
-app.get('/health', (req, res) => {
-  const healthCheck = {
-    uptime: process.uptime(),
-    message: 'OK',
-    timestamp: Date.now(),
-    environment: process.env.NODE_ENV || 'development',
-    version: process.env.npm_package_version || '1.0.0',
-    services: {
-      aws: awsService ? 'connected' : 'disconnected',
       websocket: wss.clients.size > 0 ? 'active' : 'inactive',
       monitoring: monitoringData.instances.length > 0 ? 'active' : 'inactive'
     },
@@ -131,7 +130,7 @@ wss.on('connection', (ws) => {
   
   ws.send(JSON.stringify({
     type: 'initial_data',
-    data: monitoringData
+    data: monitoringData || {}
   }));
 
   ws.on('close', () => {
@@ -146,16 +145,29 @@ wss.on('connection', (ws) => {
 
 function broadcastToClients(data) {
   const message = JSON.stringify(data);
+  
+  // Broadcast to WebSocket clients
   connectedClients.forEach(client => {
     if (client.readyState === WebSocket.OPEN) {
       try {
         client.send(message);
       } catch (error) {
-        console.error('Error broadcasting to client:', error);
+        console.error("Error broadcasting to WebSocket client:", error);
         connectedClients.delete(client);
       }
     }
   });
+  
+  // Broadcast to SSE clients
+  sseClients.forEach((client, clientId) => {
+    try {
+      client.write(`data: ${message}\n\n`);
+    } catch (error) {
+      console.error("Error broadcasting to SSE client:", error);
+      sseClients.delete(clientId);
+    }
+  });
+}
 }
 
 // Enhanced API endpoints
@@ -582,7 +594,7 @@ async function runPingChecks() {
     
     broadcastToClients({
       type: 'ping_update',
-      data: monitoringData.pingResults
+      data: monitoringData || {}.pingResults
     });
   } catch (error) {
     console.error('Error running ping checks:', error);
@@ -643,7 +655,7 @@ async function collectSystemMetrics() {
     
     broadcastToClients({
       type: 'metrics_update',
-      data: monitoringData.systemMetrics
+      data: monitoringData || {}.systemMetrics
     });
   } catch (error) {
     console.error('Error collecting system metrics:', error);
@@ -694,7 +706,7 @@ async function scanPorts() {
     
     broadcastToClients({
       type: 'ports_update',
-      data: monitoringData.openPorts
+      data: monitoringData || {}.openPorts
     });
   } catch (error) {
     console.error('Error scanning ports:', error);
@@ -708,7 +720,7 @@ cron.schedule('*/10 * * * *', scanPorts); // Every 10 minutes
 cron.schedule('*/5 * * * *', updateInstances); // Every 5 minutes
 
 // Health check endpoint
-app.get('/health', (req, res) => {
+app.get('/api/health', (req, res) => {
   res.json({
     status: 'healthy',
     timestamp: new Date(),

@@ -30,7 +30,7 @@ import WebsiteMonitoring from './pages/WebsiteMonitoring';
 import SSOCallback from './pages/SSOCallback';
 import SSOConfiguration from './pages/SSOConfiguration';
 import SAMLCallback from './pages/SAMLCallback';
-import WebSocketService from './services/WebSocketService';
+import PollingService from './services/PollingService';
 import { API_ENDPOINTS } from './config/api';
 import './styles/animations.css';
 import './App.css';
@@ -75,7 +75,7 @@ function AppContent() {
       console.log('Regions data loaded:', regionsData);
       console.log('Total instances found:', dashboardData.instances?.length);
 
-      setMonitoringData(dashboardData);
+      setMonitoringData(prev => ({ ...prev, instances: dashboardData.instances || [], stats: dashboardData.stats || {} }));
     } catch (error) {
       console.error('Error loading data from API:', error);
     }
@@ -84,7 +84,7 @@ function AppContent() {
   useEffect(() => {
     // Only initialize if user is authenticated
     if (token && user) {
-      const wsService = new WebSocketService();
+      const wsService = new PollingService();
 
       // Load initial data from API immediately
       loadDataFromAPI();
@@ -92,9 +92,10 @@ function AppContent() {
       wsService.connect();
     
     wsService.onMessage((data) => {
-      console.log('WebSocket message received:', data.type, data);
+      console.log('Polling data received:', data.type, data);
       switch (data.type) {
         case 'initial_data':
+        case 'dashboard_update':
           console.log('Setting initial data:', data.data);
           setMonitoringData(data.data);
           break;
