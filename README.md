@@ -115,12 +115,35 @@ npm start
 - **Frontend**: http://localhost:3000
 - **Backend API**: http://localhost:3001
 
-## 🔐 Default Login Credentials
+## 🔐 Authentication
+
+### Default Login Credentials
 
 - **Email**: admin@admin.com
 - **Password**: admin
 
 *You'll be prompted to change the password on first login.*
+
+### SAML Authentication (SSO)
+
+The application supports SAML authentication for enterprise SSO integration:
+
+- **📖 Complete Setup Guide**: [SAML-AUTHENTIK-SETUP.md](./SAML-AUTHENTIK-SETUP.md)
+- **⚡ Quick Setup**: [SAML-QUICK-SETUP.md](./SAML-QUICK-SETUP.md)
+
+**Supported Identity Providers:**
+- Authentik (Tested)
+- Azure AD / Entra ID
+- Okta
+- ADFS
+- Any SAML 2.0 compliant provider
+
+**Key Features:**
+- Automatic user provisioning
+- Role-based access control
+- Group mapping from IdP
+- Single Sign-On (SSO)
+- Single Logout (SLO)
 
 ## 🏗️ Architecture
 
