@@ -73,26 +73,6 @@ passport.deserializeUser((id, done) => {
   done(null, user);
 });
 
-// Health check endpoint
-      websocket: wss.clients.size > 0 ? 'active' : 'inactive',
-      monitoring: monitoringData.instances.length > 0 ? 'active' : 'inactive'
-    },
-    stats: {
-      connectedClients: connectedClients.size,
-      totalInstances: monitoringData.stats.totalInstances,
-      runningInstances: monitoringData.stats.runningInstances
-    }
-  };
-
-  try {
-    res.status(200).json(healthCheck);
-  } catch (error) {
-    healthCheck.message = 'ERROR';
-    healthCheck.error = error.message;
-    res.status(503).json(healthCheck);
-  }
-});
-
 // Authentication routes
 app.use('/api/auth', authRoutes);
 
@@ -108,6 +88,7 @@ const ssoRoutes = require('./routes/sso');
 app.use('/api/sso', ssoRoutes);
 
 let connectedClients = new Set();
+let sseClients = new Map();
 let monitoringData = {
   instances: [],
   pingResults: {},
@@ -167,7 +148,6 @@ function broadcastToClients(data) {
       sseClients.delete(clientId);
     }
   });
-}
 }
 
 // Enhanced API endpoints

@@ -6,10 +6,10 @@ const cron = require('node-cron');
 const path = require('path');
 
 // Load environment variables from parent directory
-require('dotenv').config({ path: path.resolve(__dirname, '../.env') });
-
-console.log('Environment variables loaded:');
-console.log('AWS_REGION:', process.env.AWS_REGION);
+// Load environment variables from parent directory (only if not in Docker)
+if (!process.env.NODE_ENV || process.env.NODE_ENV !== "production") {
+  require("dotenv").config({ path: path.resolve(__dirname, "../.env") });
+}
 console.log('AWS_ACCESS_KEY_ID:', process.env.AWS_ACCESS_KEY_ID ? 'SET' : 'NOT SET');
 console.log('AWS_SECRET_ACCESS_KEY:', process.env.AWS_SECRET_ACCESS_KEY ? 'SET' : 'NOT SET');
 
