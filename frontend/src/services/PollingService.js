@@ -10,6 +10,10 @@ class PollingService {
     };
     this.connected = false;
     this.isFirstFetch = true;
+    this.currentFilters = {
+      account: null,
+      region: null
+    };
   }
 
   connect() {
@@ -31,6 +35,13 @@ class PollingService {
     }, this.intervalTime);
   }
 
+  // Update filters for polling service
+  setFilters(account, region) {
+    this.currentFilters.account = account;
+    this.currentFilters.region = region;
+    console.log('PollingService: Filters updated:', this.currentFilters);
+  }
+
   async fetchData() {
     try {
       // Get auth token from localStorage
@@ -42,8 +53,18 @@ class PollingService {
       // Import API configuration
       const { API_ENDPOINTS } = await import('../config/api.js');
       
-      // Fetch complete dashboard data which includes everything
-      const response = await fetch(API_ENDPOINTS.DASHBOARD, {
+      // Build query parameters for filtering
+      const params = new URLSearchParams();
+      if (this.currentFilters.account) params.append('account', this.currentFilters.account);
+      if (this.currentFilters.region) params.append('region', this.currentFilters.region);
+      params.append('sortBy', 'usage');
+      params.append('useCache', 'true');
+
+      // Use filtered endpoint
+      const url = `${API_ENDPOINTS.DASHBOARD_FILTERED}?${params.toString()}`;
+      console.log('PollingService: Fetching filtered data from:', url);
+      
+      const response = await fetch(url, {
         headers: {
           "Authorization": `Bearer ${token}`,
           "Content-Type": "application/json"
@@ -61,7 +82,15 @@ class PollingService {
         throw new Error(`Expected JSON response but got: ${contentType}. Response: ${text.substring(0, 200)}...`);
       }
 
-      const data = await response.json();
+      const responseData = await response.json();
+      
+      // Handle the filtered API response format
+      let data;
+      if (responseData.success && responseData.data) {
+        data = responseData.data;
+      } else {
+        data = responseData;
+      }
       
       // Transform data to match expected format
       const transformedData = {
@@ -69,7 +98,8 @@ class PollingService {
         data: data
       };
 
-      console.log(`PollingService: Dashboard data fetched successfully, type: ${transformedData.type}`);
+      console.log(`PollingService: Filtered data fetched successfully, type: ${transformedData.type}`);
+      console.log(`PollingService: Applied filters - Account: ${this.currentFilters.account || 'all'}, Region: ${this.currentFilters.region || 'all'}`);
       console.log("PollingService: Data keys:", Object.keys(data));
       this.notifyListeners("data", transformedData);
       

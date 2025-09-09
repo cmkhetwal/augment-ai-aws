@@ -30,6 +30,7 @@ import WebsiteMonitoring from './pages/WebsiteMonitoring';
 import SSOCallback from './pages/SSOCallback';
 import SSOConfiguration from './pages/SSOConfiguration';
 import SAMLCallback from './pages/SAMLCallback';
+import AccountRegionFilter from './components/AccountRegionFilter';
 import PollingService from './services/PollingService';
 import { API_ENDPOINTS } from './config/api';
 import './styles/animations.css';
@@ -46,17 +47,31 @@ function AppContent() {
     instances: [],
     pingResults: {},
     systemMetrics: {},
-    openPorts: {}
+    openPorts: {},
+    stats: {}
   });
   const [connectionStatus, setConnectionStatus] = useState('connecting');
+  const [selectedAccount, setSelectedAccount] = useState(null);
+  const [selectedRegion, setSelectedRegion] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [pollingService, setPollingService] = useState(null);
   const { user, logout, hasPermission, token } = useAuth();
 
-  // Function to load data directly from API as fallback
-  const loadDataFromAPI = async () => {
+  // Function to load data with account and region filtering
+  const loadDataFromAPI = async (account = null, region = null) => {
     try {
-      console.log('Loading data from API...');
+      setLoading(true);
+      console.log(`Loading data from API (Account: ${account || 'all'}, Region: ${region || 'all'})...`);
+      
+      // Build query parameters for filtering
+      const params = new URLSearchParams();
+      if (account) params.append('account', account);
+      if (region) params.append('region', region);
+      params.append('sortBy', 'usage');
+      params.append('useCache', 'true');
+
       const [dashboardResponse, regionsResponse] = await Promise.all([
-        fetch(`${API_ENDPOINTS.INSTANCES}?dashboard=true`, {
+        fetch(`${API_ENDPOINTS.DASHBOARD_FILTERED}?${params.toString()}`, {
           headers: {
             'Authorization': `Bearer ${token}`,
           },
@@ -71,20 +86,73 @@ function AppContent() {
       const dashboardData = await dashboardResponse.json();
       const regionsData = await regionsResponse.json();
 
-      console.log('Dashboard data loaded:', dashboardData);
-      console.log('Regions data loaded:', regionsData);
-      console.log('Total instances found:', dashboardData.instances?.length);
+      if (dashboardData.success) {
+        console.log('Multi-account API data loaded successfully:', {
+          instances: dashboardData.data.instances.length,
+          accounts: dashboardData.data.stats.accounts,
+          regions: dashboardData.data.stats.regions,
+          ssmSuccessRate: dashboardData.data.stats.ssmSuccessRate
+        });
 
-      setMonitoringData(prev => ({ ...prev, instances: dashboardData.instances || [], stats: dashboardData.stats || {} }));
+        setMonitoringData({
+          instances: dashboardData.data.instances || [],
+          stats: dashboardData.data.stats || {},
+          filters: dashboardData.data.filters || {},
+          pingResults: {}, // Populated by individual service calls
+          systemMetrics: {}, // Populated by individual service calls  
+          openPorts: {}, // Populated by individual service calls
+          regions: regionsData || [],
+          timestamp: dashboardData.data.timestamp
+        });
+      } else {
+        throw new Error(dashboardData.error || 'Failed to load dashboard data');
+      }
     } catch (error) {
       console.error('Error loading data from API:', error);
+      notification.error({
+        message: 'Data Loading Error',
+        description: `Failed to load monitoring data: ${error.message}`,
+        duration: 5
+      });
+    } finally {
+      setLoading(false);
     }
+  };
+
+  // Handle account filter change
+  const handleAccountChange = (account) => {
+    console.log('Account filter changed:', account);
+    setSelectedAccount(account);
+    
+    // Update PollingService filters and trigger immediate fetch
+    if (pollingService) {
+      pollingService.setFilters(account, selectedRegion);
+      pollingService.fetchData(); // Trigger immediate fetch with new filters
+    }
+  };
+
+  // Handle region filter change  
+  const handleRegionChange = (region) => {
+    console.log('Region filter changed:', region);
+    setSelectedRegion(region);
+    
+    // Update PollingService filters and trigger immediate fetch
+    if (pollingService) {
+      pollingService.setFilters(selectedAccount, region);
+      pollingService.fetchData(); // Trigger immediate fetch with new filters
+    }
+  };
+
+  // Handle refresh with current filters
+  const handleRefresh = () => {
+    loadDataFromAPI(selectedAccount, selectedRegion);
   };
 
   useEffect(() => {
     // Only initialize if user is authenticated
     if (token && user) {
       const wsService = new PollingService();
+      setPollingService(wsService);
 
       // Load initial data from API immediately
       loadDataFromAPI();
@@ -352,24 +420,146 @@ function AppContent() {
           <Routes>
             <Route
               path="/"
-              element={<DashboardEnhanced data={monitoringData} onRefresh={loadDataFromAPI} />}
+              element={
+                <>
+                  <AccountRegionFilter
+                    selectedAccount={selectedAccount}
+                    selectedRegion={selectedRegion}
+                    onAccountChange={handleAccountChange}
+                    onRegionChange={handleRegionChange}
+                    onRefresh={handleRefresh}
+                    loading={loading}
+                    monitoringData={monitoringData}
+                  />
+                  <DashboardEnhanced 
+                    data={monitoringData} 
+                    onRefresh={handleRefresh}
+                    selectedAccount={selectedAccount}
+                    selectedRegion={selectedRegion}
+                  />
+                </>
+              }
             />
 
             <Route
               path="/instances"
-              element={<Instances data={monitoringData} />}
+              element={
+                <>
+                  <AccountRegionFilter
+                    selectedAccount={selectedAccount}
+                    selectedRegion={selectedRegion}
+                    onAccountChange={handleAccountChange}
+                    onRegionChange={handleRegionChange}
+                    onRefresh={handleRefresh}
+                    loading={loading}
+                    monitoringData={monitoringData}
+                  />
+                  <Instances 
+                    data={{
+                      ...monitoringData,
+                      instances: monitoringData.instances.filter(instance => {
+                        const matchesAccount = !selectedAccount || 
+                          instance.AccountKey === selectedAccount || 
+                          instance.accountKey === selectedAccount;
+                        const matchesRegion = !selectedRegion || 
+                          instance.Region === selectedRegion || 
+                          instance.region === selectedRegion;
+                        return matchesAccount && matchesRegion;
+                      })
+                    }}
+                  />
+                </>
+              }
             />
             <Route
               path="/ping"
-              element={<PingMonitor data={monitoringData} />}
+              element={
+                <>
+                  <AccountRegionFilter
+                    selectedAccount={selectedAccount}
+                    selectedRegion={selectedRegion}
+                    onAccountChange={handleAccountChange}
+                    onRegionChange={handleRegionChange}
+                    onRefresh={handleRefresh}
+                    loading={loading}
+                    monitoringData={monitoringData}
+                  />
+                  <PingMonitor 
+                    data={{
+                      ...monitoringData,
+                      instances: monitoringData.instances.filter(instance => {
+                        const matchesAccount = !selectedAccount || 
+                          instance.AccountKey === selectedAccount || 
+                          instance.accountKey === selectedAccount;
+                        const matchesRegion = !selectedRegion || 
+                          instance.Region === selectedRegion || 
+                          instance.region === selectedRegion;
+                        return matchesAccount && matchesRegion;
+                      })
+                    }}
+                  />
+                </>
+              }
             />
             <Route
               path="/metrics"
-              element={<SystemMetrics data={monitoringData} />}
+              element={
+                <>
+                  <AccountRegionFilter
+                    selectedAccount={selectedAccount}
+                    selectedRegion={selectedRegion}
+                    onAccountChange={handleAccountChange}
+                    onRegionChange={handleRegionChange}
+                    onRefresh={handleRefresh}
+                    loading={loading}
+                    monitoringData={monitoringData}
+                  />
+                  <SystemMetrics 
+                    data={{
+                      ...monitoringData,
+                      instances: monitoringData.instances.filter(instance => {
+                        const matchesAccount = !selectedAccount || 
+                          instance.AccountKey === selectedAccount || 
+                          instance.accountKey === selectedAccount;
+                        const matchesRegion = !selectedRegion || 
+                          instance.Region === selectedRegion || 
+                          instance.region === selectedRegion;
+                        return matchesAccount && matchesRegion;
+                      })
+                    }}
+                  />
+                </>
+              }
             />
             <Route
               path="/ports"
-              element={<PortScanner data={monitoringData} />}
+              element={
+                <>
+                  <AccountRegionFilter
+                    selectedAccount={selectedAccount}
+                    selectedRegion={selectedRegion}
+                    onAccountChange={handleAccountChange}
+                    onRegionChange={handleRegionChange}
+                    onRefresh={handleRefresh}
+                    loading={loading}
+                    monitoringData={monitoringData}
+                  />
+                  <PortScanner 
+                    data={{
+                      ...monitoringData,
+                      instances: monitoringData.instances.filter(instance => {
+                        const matchesAccount = !selectedAccount || 
+                          instance.AccountKey === selectedAccount || 
+                          instance.accountKey === selectedAccount;
+                        const matchesRegion = !selectedRegion || 
+                          instance.Region === selectedRegion || 
+                          instance.region === selectedRegion;
+                        return matchesAccount && matchesRegion;
+                      })
+                    }}
+                  />
+                </>
+              }
             />
             <Route
               path="/websites"

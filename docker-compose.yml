@@ -14,7 +14,7 @@ services:
     restart: unless-stopped
 
   backend:
-    image: cmkh/pulsestack:backend
+    build: ./backend
     container_name: aws-monitor-backend
     ports:
       - "0.0.0.0:3001:3001"
@@ -41,7 +41,7 @@ services:
     restart: unless-stopped
 
   frontend:
-    image: cmkh/pulsestack:frontend
+    build: ./frontend
     container_name: aws-monitor-frontend
     ports:
       - "0.0.0.0:3000:3000"

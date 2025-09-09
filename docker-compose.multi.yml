@@ -1,0 +1,65 @@
+version: '3.8'
+
+services:
+  mongodb:
+    image: mongo:6
+    container_name: aws-monitor-mongodb-multi
+    volumes:
+      - mongodb_data_multi:/data/db
+    environment:
+      - MONGO_INITDB_DATABASE=aws-monitor
+    ports:
+      - "27017:27017"
+    networks:
+      - monitoring-network
+    restart: unless-stopped
+
+  backend:
+    image: cmkh/pulsestack-multi-account:backend-latest
+    container_name: aws-monitor-backend-multi
+    depends_on:
+      - mongodb
+    environment:
+      - MONGODB_URI=mongodb://mongodb:27017/aws-monitor
+      - JWT_SECRET=${JWT_SECRET:-your-secret-key-here}
+      - NODE_ENV=production
+      - PORT=3001
+      # Multi-Account AWS Credentials
+      # Bamkom Account
+      - BAMKOM_AWS_ACCESS_KEY_ID=${BAMKOM_AWS_ACCESS_KEY_ID}
+      - BAMKOM_AWS_SECRET_ACCESS_KEY=${BAMKOM_AWS_SECRET_ACCESS_KEY}
+      - BAMKOM_AWS_REGION=${BAMKOM_AWS_REGION:-us-east-1}
+      # Unified Account
+      - UNIFIED_AWS_ACCESS_KEY_ID=${UNIFIED_AWS_ACCESS_KEY_ID}
+      - UNIFIED_AWS_SECRET_ACCESS_KEY=${UNIFIED_AWS_SECRET_ACCESS_KEY}
+      - UNIFIED_AWS_REGION=${UNIFIED_AWS_REGION:-us-east-1}
+      # Fallback to alternative naming
+      - AWS_ACCESS_KEY_ID_2=${AWS_ACCESS_KEY_ID_2}
+      - AWS_SECRET_ACCESS_KEY_2=${AWS_SECRET_ACCESS_KEY_2}
+      # Admin Configuration
+      - ADMIN_USERNAME=${ADMIN_USERNAME:-admin}
+      - ADMIN_EMAIL=${ADMIN_EMAIL:-admin@admin.com}
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD:-Admin@123}
+    ports:
+      - "3001:3001"
+    networks:
+      - monitoring-network
+    restart: unless-stopped
+
+  frontend:
+    image: cmkh/pulsestack-multi-account:frontend-latest
+    container_name: aws-monitor-frontend-multi
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+    networks:
+      - monitoring-network
+    restart: unless-stopped
+
+volumes:
+  mongodb_data_multi:
+
+networks:
+  monitoring-network:
+    driver: bridge

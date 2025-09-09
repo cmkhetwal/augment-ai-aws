@@ -376,6 +376,180 @@ app.post('/api/regions/refresh', authService.authenticateToken.bind(authService)
   }
 });
 
+// Get all available accounts
+app.get('/api/accounts', authService.authenticateToken.bind(authService), async (req, res) => {
+  try {
+    const accounts = awsService.getAccounts();
+    res.json({
+      success: true,
+      accounts: accounts
+    });
+  } catch (error) {
+    console.error('Error fetching accounts:', error);
+    res.status(500).json({ 
+      success: false,
+      error: error.message 
+    });
+  }
+});
+
+// Get filtered instances by account and region
+app.get('/api/instances/filtered', authService.authenticateToken.bind(authService), async (req, res) => {
+  try {
+    const { account, region, useCache = 'true' } = req.query;
+    
+    console.log(`Fetching filtered instances: account=${account || 'all'}, region=${region || 'all'}`);
+    
+    const instances = await awsService.getEC2Instances(
+      useCache === 'true',
+      account || null,
+      region || null
+    );
+    
+    // Add stats
+    const stats = {
+      totalInstances: instances.length,
+      runningInstances: instances.filter(i => i.State?.Name === 'running').length,
+      stoppedInstances: instances.filter(i => i.State?.Name === 'stopped').length,
+      accounts: [...new Set(instances.map(i => i.AccountName))],
+      regions: [...new Set(instances.map(i => i.Region))],
+      ssmSuccessCount: instances.filter(i => i.SSMSuccess).length,
+      collectionMethods: {
+        ssm: instances.filter(i => i.CollectionMethod?.includes('SSM')).length,
+        estimated: instances.filter(i => i.CollectionMethod?.includes('Estimated')).length
+      }
+    };
+
+    res.json({
+      success: true,
+      instances: instances,
+      stats: stats,
+      filters: {
+        account: account || null,
+        region: region || null
+      }
+    });
+  } catch (error) {
+    console.error('Error fetching filtered instances:', error);
+    res.status(500).json({ 
+      success: false,
+      error: error.message,
+      code: error.code || 'UNKNOWN_ERROR'
+    });
+  }
+});
+
+// Enhanced dashboard endpoint with account/region filtering
+app.get('/api/dashboard/filtered', authService.authenticateToken.bind(authService), async (req, res) => {
+  try {
+    const { account, region, sortBy = 'usage', useCache = 'true' } = req.query;
+    
+    console.log(`Dashboard request: account=${account || 'all'}, region=${region || 'all'}, sortBy=${sortBy}`);
+    
+    // Get filtered instances
+    const instances = await awsService.getEC2Instances(
+      useCache === 'true',
+      account || null,
+      region || null
+    );
+    
+    // Enhanced statistics
+    const stats = {
+      totalInstances: instances.length,
+      runningInstances: instances.filter(i => i.State?.Name === 'running').length,
+      stoppedInstances: instances.filter(i => i.State?.Name === 'stopped').length,
+      highCpuInstances: instances.filter(i => (i.CPUUtilization || 0) > 80).length,
+      highMemoryInstances: instances.filter(i => (i.MemoryUtilization || 0) > 80).length,
+      highDiskInstances: instances.filter(i => (i.DiskUtilization || 0) > 80).length,
+      offlineInstances: instances.filter(i => i.State?.Name !== 'running').length,
+      accounts: [...new Set(instances.map(i => i.AccountName))],
+      regions: [...new Set(instances.map(i => i.Region))],
+      ssmSuccessRate: instances.length > 0 ? 
+        Math.round((instances.filter(i => i.SSMSuccess).length / instances.length) * 100) : 0,
+      avgCpuUtilization: instances.length > 0 ? 
+        Math.round(instances.reduce((sum, i) => sum + (i.CPUUtilization || 0), 0) / instances.length * 100) / 100 : 0,
+      avgMemoryUtilization: instances.length > 0 ? 
+        Math.round(instances.reduce((sum, i) => sum + (i.MemoryUtilization || 0), 0) / instances.length * 100) / 100 : 0,
+      avgDiskUtilization: instances.length > 0 ? 
+        Math.round(instances.reduce((sum, i) => sum + (i.DiskUtilization || 0), 0) / instances.length * 100) / 100 : 0,
+      lastUpdate: new Date().toISOString()
+    };
+
+    // Sort instances based on requested criteria
+    let sortedInstances = [...instances];
+    switch (sortBy) {
+      case 'cpu':
+        sortedInstances.sort((a, b) => (b.CPUUtilization || 0) - (a.CPUUtilization || 0));
+        break;
+      case 'memory':
+        sortedInstances.sort((a, b) => (b.MemoryUtilization || 0) - (a.MemoryUtilization || 0));
+        break;
+      case 'disk':
+        sortedInstances.sort((a, b) => (b.DiskUtilization || 0) - (a.DiskUtilization || 0));
+        break;
+      case 'usage':
+        // Sort by combined resource usage
+        sortedInstances.sort((a, b) => {
+          const aUsage = (a.CPUUtilization || 0) + (a.MemoryUtilization || 0) + (a.DiskUtilization || 0);
+          const bUsage = (b.CPUUtilization || 0) + (b.MemoryUtilization || 0) + (b.DiskUtilization || 0);
+          return bUsage - aUsage;
+        });
+        break;
+      case 'name':
+        sortedInstances.sort((a, b) => {
+          const aName = a.Tags?.find(t => t.Key === 'Name')?.Value || a.InstanceId;
+          const bName = b.Tags?.find(t => t.Key === 'Name')?.Value || b.InstanceId;
+          return aName.localeCompare(bName);
+        });
+        break;
+      default:
+        // Default sort by account, then region, then name
+        sortedInstances.sort((a, b) => {
+          if (a.AccountName !== b.AccountName) return a.AccountName.localeCompare(b.AccountName);
+          if (a.Region !== b.Region) return a.Region.localeCompare(b.Region);
+          const aName = a.Tags?.find(t => t.Key === 'Name')?.Value || a.InstanceId;
+          const bName = b.Tags?.find(t => t.Key === 'Name')?.Value || b.InstanceId;
+          return aName.localeCompare(bName);
+        });
+    }
+
+    // Filter systemMetrics to only include instances from the filtered result
+    const filteredSystemMetrics = {};
+    const instanceIds = new Set(sortedInstances.map(i => i.InstanceId));
+    
+    for (const [instanceId, metrics] of Object.entries(monitoringData.systemMetrics || {})) {
+      if (instanceIds.has(instanceId)) {
+        filteredSystemMetrics[instanceId] = metrics;
+      }
+    }
+
+    res.json({
+      success: true,
+      type: 'dashboard_data',
+      data: {
+        instances: sortedInstances,
+        stats: stats,
+        filters: {
+          account: account || null,
+          region: region || null,
+          sortBy: sortBy
+        },
+        openPorts: monitoringData.openPorts || {},
+        pingResults: monitoringData.pingResults || {},
+        systemMetrics: filteredSystemMetrics,
+        timestamp: new Date().toISOString()
+      }
+    });
+  } catch (error) {
+    console.error('Error fetching filtered dashboard data:', error);
+    res.status(500).json({ 
+      success: false,
+      error: error.message,
+      code: error.code || 'UNKNOWN_ERROR'
+    });
+  }
+});
+
 // Notification configuration endpoints
 app.get('/api/notifications/config', authService.authenticateToken.bind(authService), (req, res) => {
   res.json(notificationService.getConfig());
@@ -461,7 +635,11 @@ app.get('/api/metrics/:instanceId', authService.authenticateToken.bind(authServi
     }
     
     console.log(`Calling metricsService.getSystemMetrics for ${instanceId}`);
-    const rawMetrics = await metricsService.getSystemMetrics(instanceId);
+    const rawMetrics = await metricsService.getSystemMetrics(
+      instanceId, 
+      instance.AccountKey, 
+      instance.Region
+    );
     console.log(`Raw metrics keys:`, Object.keys(rawMetrics || {}));
     console.log(`Raw metrics:`, JSON.stringify(rawMetrics, null, 2));
     
@@ -595,7 +773,11 @@ async function collectSystemMetrics() {
       const metricsPromises = batch.map(async (instance) => {
         try {
           // Use comprehensive metrics service for all instances
-          const metrics = await metricsService.getSystemMetrics(instance.InstanceId);
+          const metrics = await metricsService.getSystemMetrics(
+            instance.InstanceId, 
+            instance.AccountKey, 
+            instance.Region
+          );
           
           const instanceName = instance.Tags?.find(tag => tag.Key === 'Name')?.Value || instance.InstanceId;
           
@@ -686,7 +868,7 @@ async function scanPorts() {
     
     broadcastToClients({
       type: 'ports_update',
-      data: monitoringData || {}.openPorts
+      data: monitoringData.openPorts
     });
   } catch (error) {
     console.error('Error scanning ports:', error);

@@ -31,6 +31,11 @@ export const API_ENDPOINTS = {
 
   // Dashboard
   DASHBOARD: `${API_BASE_URL}/api/dashboard`,
+  DASHBOARD_FILTERED: `${API_BASE_URL}/api/dashboard/filtered`,
+
+  // Accounts and Filtering
+  ACCOUNTS: `${API_BASE_URL}/api/accounts`,
+  INSTANCES_FILTERED: `${API_BASE_URL}/api/instances/filtered`,
 };
 
 export default API_BASE_URL;
