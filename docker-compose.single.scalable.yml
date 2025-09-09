@@ -1,0 +1,93 @@
+version: '3.8'
+
+services:
+  mongodb:
+    image: mongo:6
+    container_name: aws-monitor-mongodb-single
+    volumes:
+      - mongodb_data_single:/data/db
+    environment:
+      - MONGO_INITDB_DATABASE=aws-monitor
+    ports:
+      - "27017:27017"
+    networks:
+      - monitoring-network
+    restart: unless-stopped
+
+  backend:
+    image: cmkh/pulsestack-single-account:backend-latest
+    depends_on:
+      - mongodb
+    environment:
+      - MONGODB_URI=mongodb://mongodb:27017/aws-monitor
+      - JWT_SECRET=${JWT_SECRET:-your-secret-key-here}
+      - NODE_ENV=production
+      - PORT=3001
+      # Single Account AWS Credentials
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
+      - AWS_REGION=${AWS_REGION:-us-east-1}
+      # Admin Configuration
+      - ADMIN_USERNAME=${ADMIN_USERNAME:-admin}
+      - ADMIN_EMAIL=${ADMIN_EMAIL:-admin@admin.com}
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD:-Admin@123}
+    networks:
+      - monitoring-network
+    restart: unless-stopped
+    deploy:
+      replicas: 2
+      resources:
+        limits:
+          memory: 512M
+        reservations:
+          memory: 256M
+
+  frontend:
+    image: cmkh/pulsestack-single-account:frontend-latest
+    depends_on:
+      - backend
+    networks:
+      - monitoring-network
+    restart: unless-stopped
+    deploy:
+      replicas: 2
+      resources:
+        limits:
+          memory: 256M
+        reservations:
+          memory: 128M
+
+  # Nginx Load Balancer for Backend
+  backend-lb:
+    image: nginx:alpine
+    container_name: aws-monitor-backend-lb-single
+    ports:
+      - "3001:3001"
+    volumes:
+      - ./nginx-backend.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - backend
+    networks:
+      - monitoring-network
+    restart: unless-stopped
+
+  # Nginx Load Balancer for Frontend
+  frontend-lb:
+    image: nginx:alpine
+    container_name: aws-monitor-frontend-lb-single
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./nginx-frontend.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - frontend
+    networks:
+      - monitoring-network
+    restart: unless-stopped
+
+volumes:
+  mongodb_data_single:
+
+networks:
+  monitoring-network:
+    driver: bridge
