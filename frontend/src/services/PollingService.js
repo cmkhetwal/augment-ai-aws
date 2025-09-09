@@ -39,8 +39,11 @@ class PollingService {
         throw new Error("No authentication token found");
       }
 
+      // Import API configuration
+      const { API_ENDPOINTS } = await import('../config/api.js');
+      
       // Fetch complete dashboard data which includes everything
-      const response = await fetch("/api/dashboard", {
+      const response = await fetch(API_ENDPOINTS.DASHBOARD, {
         headers: {
           "Authorization": `Bearer ${token}`,
           "Content-Type": "application/json"
@@ -49,6 +52,13 @@ class PollingService {
 
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      // Check if response is JSON
+      const contentType = response.headers.get('content-type');
+      if (!contentType || !contentType.includes('application/json')) {
+        const text = await response.text();
+        throw new Error(`Expected JSON response but got: ${contentType}. Response: ${text.substring(0, 200)}...`);
       }
 
       const data = await response.json();

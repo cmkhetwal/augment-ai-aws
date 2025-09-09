@@ -14,7 +14,7 @@ class User {
       const adminEmail = 'admin@admin.com';
       if (!this.users.has(adminEmail)) {
         const saltRounds = 12;
-        const hashedPassword = await bcrypt.hash('admin', saltRounds);
+        const hashedPassword = await bcrypt.hash('vmware@123', saltRounds);
 
         const adminUser = {
           id: crypto.randomUUID(),
@@ -34,7 +34,7 @@ class User {
         };
 
         this.users.set(adminEmail, adminUser);
-        console.log('Default admin user created: admin@admin.com / admin (must change password on first login)');
+        console.log('Default admin user created: admin@admin.com / vmware@123 (must change password on first login)');
       } else {
         // Update existing admin user permissions if they're missing new permissions
         this.updateAdminPermissions();

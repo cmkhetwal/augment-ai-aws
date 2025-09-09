@@ -16,48 +16,32 @@ COPY . .
 RUN npm run build
 
 # Production stage
-FROM nginx:alpine AS production
+FROM node:18-alpine AS production
 
-# Install wget for health checks
-RUN apk add --no-cache wget
+WORKDIR /app
 
-# Nginx user already exists in nginx:alpine base image
+# Install serve for serving static files and wget for health checks
+RUN npm install -g serve && apk add --no-cache wget
+
+# Create non-root user
+RUN addgroup -g 1001 -S nodejs && \
+    adduser -S nodejs -u 1001
 
 # Copy built application
-COPY --from=builder /app/build /usr/share/nginx/html
-
-# Copy nginx configuration
-COPY nginx.conf /etc/nginx/conf.d/default.conf
-
-# Create a custom nginx.conf that uses /tmp for PID file
-RUN echo 'user nginx;' > /etc/nginx/nginx.conf && \
-    echo 'worker_processes auto;' >> /etc/nginx/nginx.conf && \
-    echo 'pid /tmp/nginx.pid;' >> /etc/nginx/nginx.conf && \
-    echo 'events { worker_connections 1024; }' >> /etc/nginx/nginx.conf && \
-    echo 'http {' >> /etc/nginx/nginx.conf && \
-    echo '    include /etc/nginx/mime.types;' >> /etc/nginx/nginx.conf && \
-    echo '    default_type application/octet-stream;' >> /etc/nginx/nginx.conf && \
-    echo '    sendfile on;' >> /etc/nginx/nginx.conf && \
-    echo '    keepalive_timeout 65;' >> /etc/nginx/nginx.conf && \
-    echo '    include /etc/nginx/conf.d/*.conf;' >> /etc/nginx/nginx.conf && \
-    echo '}' >> /etc/nginx/nginx.conf
+COPY --from=builder /app/build ./build
 
 # Set proper permissions
-RUN chown -R nginx:nginx /usr/share/nginx/html && \
-    chown -R nginx:nginx /var/cache/nginx && \
-    chown -R nginx:nginx /var/log/nginx && \
-    chown -R nginx:nginx /etc/nginx/conf.d && \
-    chown -R nginx:nginx /tmp
+RUN chown -R nodejs:nodejs /app
 
-# Switch to nginx user
-USER nginx
+# Switch to non-root user
+USER nodejs
 
-# Expose port
-EXPOSE 80
+# Expose port 3000
+EXPOSE 3000
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
-    CMD wget --no-verbose --tries=1 --spider http://localhost:80/ || exit 1
+    CMD wget --no-verbose --tries=1 --spider http://localhost:3000/ || exit 1
 
-# Start nginx
-CMD ["nginx", "-g", "daemon off;"]
+# Start serve on port 3000
+CMD ["serve", "-s", "build", "-l", "3000"]

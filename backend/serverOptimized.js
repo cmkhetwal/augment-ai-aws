@@ -709,7 +709,7 @@ app.get('/api/health', (req, res) => {
   });
 });
 
-server.listen(PORT, () => {
+server.listen(PORT, '0.0.0.0', () => {
   console.log(`Multi-Region AWS EC2 Monitor Backend running on port ${PORT}`);
   console.log(`Connected WebSocket clients will receive real-time updates`);
   console.log(`Maximum instances supported: ${process.env.MAX_INSTANCES || 500}`);

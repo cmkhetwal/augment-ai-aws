@@ -11,6 +11,7 @@ import {
   EditOutlined
 } from '@ant-design/icons';
 import { useAuth } from '../contexts/AuthContext';
+import { API_ENDPOINTS } from '../config/api';
 
 const { Title, Text } = Typography;
 
@@ -46,7 +47,7 @@ const WebsiteMonitoring = () => {
   // API calls
   const fetchWebsites = async () => {
     try {
-      const response = await fetch('/api/website-monitoring/websites', {
+      const response = await fetch(`${API_ENDPOINTS.WEBSITE_MONITORING}/websites`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       const data = await response.json();
@@ -60,7 +61,7 @@ const WebsiteMonitoring = () => {
 
   const fetchResults = async () => {
     try {
-      const response = await fetch('/api/website-monitoring/results', {
+      const response = await fetch(`${API_ENDPOINTS.WEBSITE_MONITORING}/results`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       const data = await response.json();
@@ -74,7 +75,7 @@ const WebsiteMonitoring = () => {
 
   const fetchStats = async () => {
     try {
-      const response = await fetch('/api/website-monitoring/stats', {
+      const response = await fetch(`${API_ENDPOINTS.WEBSITE_MONITORING}/stats`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       const data = await response.json();
@@ -89,7 +90,7 @@ const WebsiteMonitoring = () => {
   const addWebsite = async (values) => {
     try {
       setLoading(true);
-      const response = await fetch('/api/website-monitoring/websites', {
+      const response = await fetch(`${API_ENDPOINTS.WEBSITE_MONITORING}/websites`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -122,7 +123,7 @@ const WebsiteMonitoring = () => {
   const editWebsite = async (values) => {
     try {
       setLoading(true);
-      const response = await fetch(`/api/website-monitoring/websites/${editingWebsite.id}`, {
+      const response = await fetch(`${API_ENDPOINTS.WEBSITE_MONITORING}/websites/${editingWebsite.id}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -155,7 +156,7 @@ const WebsiteMonitoring = () => {
 
   const removeWebsite = async (websiteId) => {
     try {
-      const response = await fetch(`/api/website-monitoring/websites/${websiteId}`, {
+      const response = await fetch(`${API_ENDPOINTS.WEBSITE_MONITORING}/websites/${websiteId}`, {
         method: 'DELETE',
         headers: { 'Authorization': `Bearer ${token}` }
       });
@@ -176,7 +177,7 @@ const WebsiteMonitoring = () => {
   const checkWebsite = async (websiteId) => {
     try {
       setLoading(true);
-      const response = await fetch(`/api/website-monitoring/check/${websiteId}`, {
+      const response = await fetch(`${API_ENDPOINTS.WEBSITE_MONITORING}/check/${websiteId}`, {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${token}` }
       });

@@ -1,14 +1,11 @@
-// API Configuration - Dynamic URL detection
+// API Configuration - Fallback strategy for different environments
 const getApiBaseUrl = () => {
-  // In production, use the current host (nginx will proxy to backend)
-  // In development, use the proxy configured in package.json
-  if (process.env.NODE_ENV === "production") {
-    const protocol = window.location.protocol;
-    const hostname = window.location.hostname;
-    // Use the same domain - nginx will handle routing to backend
-    return `${protocol}//${hostname}`;
-  }
-  return "";
+  const protocol = window.location.protocol;
+  const hostname = window.location.hostname;
+  
+  // Always try the same hostname with port 3001 first
+  // This works for localhost, 127.0.0.1, and IP addresses
+  return `${protocol}//${hostname}:3001`;
 };
 
 const API_BASE_URL = getApiBaseUrl();
@@ -31,6 +28,9 @@ export const API_ENDPOINTS = {
 
   // SSO
   SSO: `${API_BASE_URL}/api/sso`,
+
+  // Dashboard
+  DASHBOARD: `${API_BASE_URL}/api/dashboard`,
 };
 
 export default API_BASE_URL;

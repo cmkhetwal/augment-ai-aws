@@ -1,7 +1,7 @@
 services:
   mongodb:
     image: mongo:7.0
-    container_name: aws-monitor-mongodb
+    container_name: pulsestack-mongodb
     environment:
       MONGO_INITDB_ROOT_USERNAME: admin
       MONGO_INITDB_ROOT_PASSWORD: password123
@@ -15,7 +15,7 @@ services:
 
   backend:
     image: cmkh/pulsestack:backend
-    container_name: aws-monitor-backend
+    container_name: pulsestack-backend
     ports:
       - "0.0.0.0:3001:3001"
     environment:
@@ -24,7 +24,7 @@ services:
       - AWS_REGION=us-east-1
       - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
       - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
-      - JWT_SECRET=change-this-secret-in-production
+      - JWT_SECRET=${JWT_SECRET:-change-this-secret-in-production}
       - JWT_EXPIRES_IN=24h
       - BCRYPT_ROUNDS=12
       - MAX_INSTANCES=500
@@ -39,10 +39,16 @@ services:
     networks:
       - monitoring-network
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3001/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
 
   frontend:
     image: cmkh/pulsestack:frontend
-    container_name: aws-monitor-frontend
+    container_name: pulsestack-frontend
     ports:
       - "0.0.0.0:3000:3000"
     depends_on:
@@ -50,6 +56,12 @@ services:
     networks:
       - monitoring-network
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
 
 volumes:
   mongodb_data:
