@@ -1,0 +1,57 @@
+version: '3.8'
+
+services:
+  mongodb:
+    image: mongo:6
+    container_name: aws-monitor-mongodb-single
+    volumes:
+      - mongodb_data_single:/data/db
+    environment:
+      - MONGO_INITDB_DATABASE=aws-monitor
+    ports:
+      - "27017:27017"
+    networks:
+      - monitoring-network
+    restart: unless-stopped
+
+  backend:
+    image: cmkh/pulsestack-single-account:backend-latest
+    container_name: aws-monitor-backend-single
+    depends_on:
+      - mongodb
+    environment:
+      - MONGODB_URI=mongodb://mongodb:27017/aws-monitor
+      - JWT_SECRET=${JWT_SECRET:-your-secret-key-here}
+      - NODE_ENV=production
+      - PORT=3001
+      # Single Account AWS Credentials
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
+      - AWS_REGION=${AWS_REGION:-us-east-1}
+      # Admin Configuration
+      - ADMIN_USERNAME=${ADMIN_USERNAME:-admin}
+      - ADMIN_EMAIL=${ADMIN_EMAIL:-admin@admin.com}
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD:-Admin@123}
+    ports:
+      - "3001:3001"
+    networks:
+      - monitoring-network
+    restart: unless-stopped
+
+  frontend:
+    image: cmkh/pulsestack-single-account:frontend-latest
+    container_name: aws-monitor-frontend-single
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+    networks:
+      - monitoring-network
+    restart: unless-stopped
+
+volumes:
+  mongodb_data_single:
+
+networks:
+  monitoring-network:
+    driver: bridge

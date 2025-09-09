@@ -1,12 +1,18 @@
 # PulseStack - Production Deployment Guide
 
 ## Overview
-PulseStack is a comprehensive AWS EC2 infrastructure monitoring application built with React frontend, Node.js backend, and MongoDB database.
+PulseStack is a comprehensive AWS EC2 infrastructure monitoring application built with React frontend, Node.js backend, and MongoDB database. It supports both single-account and multi-account AWS infrastructure monitoring.
 
 ## Docker Images
 The application images are available on Docker Hub:
-- **Backend**: `cmkh/pulsestack:backend`
-- **Frontend**: `cmkh/pulsestack:frontend`
+
+### Single Account Version
+- **Backend**: `cmkh/pulsestack-single-account:backend-latest`
+- **Frontend**: `cmkh/pulsestack-single-account:frontend-latest`
+
+### Multi-Account Version
+- **Backend**: `cmkh/pulsestack-multi-account:backend-latest`
+- **Frontend**: `cmkh/pulsestack-multi-account:frontend-latest`
 
 ## Quick Start (Production)
 

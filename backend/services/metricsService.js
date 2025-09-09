@@ -1,5 +1,22 @@
 const AWS = require('aws-sdk');
 
+// Multi-account configuration from environment variables
+const accounts = {
+  bamkom: {
+    name: 'Bamkom',
+    accessKeyId: process.env.BAMKOM_AWS_ACCESS_KEY_ID || process.env.AWS_ACCESS_KEY_ID,
+    secretAccessKey: process.env.BAMKOM_AWS_SECRET_ACCESS_KEY || process.env.AWS_SECRET_ACCESS_KEY,
+    defaultRegion: process.env.BAMKOM_AWS_REGION || 'us-east-1'
+  },
+  unified: {
+    name: 'Unified',
+    accessKeyId: process.env.UNIFIED_AWS_ACCESS_KEY_ID || process.env.AWS_ACCESS_KEY_ID_2,
+    secretAccessKey: process.env.UNIFIED_AWS_SECRET_ACCESS_KEY || process.env.AWS_SECRET_ACCESS_KEY_2,
+    defaultRegion: process.env.UNIFIED_AWS_REGION || 'us-east-1'
+  }
+};
+
+// Default services for backward compatibility (using environment credentials)
 const cloudwatch = new AWS.CloudWatch({
   region: process.env.AWS_REGION || 'us-east-1',
   accessKeyId: process.env.AWS_ACCESS_KEY_ID,
@@ -19,7 +36,22 @@ const ssm = new AWS.SSM({
 });
 
 class MetricsService {
-  async getSystemMetrics(instanceId) {
+  // Get SSM client for a specific account
+  getSSMClient(accountKey, region = 'us-east-1') {
+    const account = accounts[accountKey];
+    if (!account) {
+      console.error(`Unknown account key: ${accountKey}`);
+      return ssm; // Fallback to default
+    }
+
+    return new AWS.SSM({
+      region: region,
+      accessKeyId: account.accessKeyId,
+      secretAccessKey: account.secretAccessKey
+    });
+  }
+
+  async getSystemMetrics(instanceId, accountKey = null, region = 'us-east-1') {
     try {
       console.log(`Getting system metrics for ${instanceId}`);
       const endTime = new Date();
@@ -39,8 +71,8 @@ class MetricsService {
         network: !!networkMetrics
       });
 
-      const topProcesses = await this.getTopProcesses(instanceId);
-      console.log(`Top processes for ${instanceId}:`, !!topProcesses);
+      const topProcesses = await this.getTopProcesses(instanceId, accountKey, region);
+      console.log(`Top processes for ${instanceId} (account: ${accountKey}, region: ${region}):`, !!topProcesses);
 
       const result = {
         instanceId,
@@ -280,15 +312,15 @@ class MetricsService {
     }
   }
 
-  async getTopProcesses(instanceId) {
+  async getTopProcesses(instanceId, accountKey = null, region = 'us-east-1') {
     try {
-      console.log(`Attempting to get process data for ${instanceId} via SSM...`);
+      console.log(`Attempting to get process data for ${instanceId} via SSM (account: ${accountKey}, region: ${region})...`);
       
-      // First check if SSM agent is available
-      const ssmAvailable = await this.checkSSMAvailability(instanceId);
+      // First check if SSM agent is available using account-specific credentials
+      const ssmAvailable = await this.checkSSMAvailability(instanceId, accountKey, region);
       
       if (ssmAvailable) {
-        return await this.getProcessesViaSSM(instanceId);
+        return await this.getProcessesViaSSM(instanceId, accountKey, region);
       } else {
         // Fallback to simulated data based on CloudWatch metrics
         return await this.getSimulatedProcesses(instanceId);
@@ -300,7 +332,7 @@ class MetricsService {
     }
   }
 
-  async checkSSMAvailability(instanceId) {
+  async checkSSMAvailability(instanceId, accountKey = null, region = 'us-east-1') {
     try {
       const params = {
         Filters: [
@@ -311,17 +343,20 @@ class MetricsService {
         ]
       };
       
-      const result = await ssm.describeInstanceInformation(params).promise();
+      // Use account-specific SSM client if accountKey is provided
+      const ssmClient = accountKey ? this.getSSMClient(accountKey, region) : ssm;
+      
+      const result = await ssmClient.describeInstanceInformation(params).promise();
       const available = result.InstanceInformationList.length > 0;
-      console.log(`SSM available for ${instanceId}: ${available}`);
+      console.log(`SSM available for ${instanceId} (account: ${accountKey || 'default'}, region: ${region}): ${available}`);
       return available;
     } catch (error) {
-      console.log(`SSM not available for ${instanceId}: ${error.message}`);
+      console.log(`SSM not available for ${instanceId} (account: ${accountKey || 'default'}, region: ${region}): ${error.message}`);
       return false;
     }
   }
 
-  async getProcessesViaSSM(instanceId) {
+  async getProcessesViaSSM(instanceId, accountKey = null, region = 'us-east-1') {
     try {
       const command = `ps aux --sort=-%cpu | head -6 | tail -5 | awk '{print $2","$3","$4","$11}' | while IFS=, read pid cpu mem cmd; do echo "PID:$pid,CPU:$cpu,MEM:$mem,CMD:$cmd"; done`;
       
@@ -333,13 +368,16 @@ class MetricsService {
         }
       };
 
-      const result = await ssm.sendCommand(params).promise();
+      // Use account-specific SSM client
+      const ssmClient = accountKey ? this.getSSMClient(accountKey, region) : ssm;
+      
+      const result = await ssmClient.sendCommand(params).promise();
       const commandId = result.Command.CommandId;
 
       // Wait for command to complete
       await new Promise(resolve => setTimeout(resolve, 3000));
 
-      const output = await ssm.getCommandInvocation({
+      const output = await ssmClient.getCommandInvocation({
         CommandId: commandId,
         InstanceId: instanceId
       }).promise();

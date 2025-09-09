@@ -175,7 +175,11 @@ async function collectSystemMetrics() {
     const metricsPromises = monitoringData.instances.map(async (instance) => {
       if (instance.State.Name === 'running') {
         try {
-          const metrics = await metricsService.getSystemMetrics(instance.InstanceId);
+          const metrics = await metricsService.getSystemMetrics(
+            instance.InstanceId,
+            instance.AccountKey,
+            instance.Region
+          );
           monitoringData.systemMetrics[instance.InstanceId] = {
             ...metrics,
             timestamp: new Date(),

@@ -3,44 +3,63 @@ const NodeCache = require('node-cache');
 
 class MultiRegionAWSService {
   constructor() {
-    // Validate required AWS credentials
-    if (!process.env.AWS_ACCESS_KEY_ID || !process.env.AWS_SECRET_ACCESS_KEY) {
-      console.error('ERROR: AWS credentials not found in environment variables!');
-      console.error('Please ensure AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY are set in .env file');
-      process.exit(1);
-    }
+    // Multi-account configuration from environment variables
+    this.accounts = {
+      bamkom: {
+        name: 'Bamkom',
+        accessKeyId: process.env.BAMKOM_AWS_ACCESS_KEY_ID || process.env.AWS_ACCESS_KEY_ID,
+        secretAccessKey: process.env.BAMKOM_AWS_SECRET_ACCESS_KEY || process.env.AWS_SECRET_ACCESS_KEY,
+        defaultRegion: process.env.BAMKOM_AWS_REGION || 'us-east-1'
+      },
+      unified: {
+        name: 'Unified',
+        accessKeyId: process.env.UNIFIED_AWS_ACCESS_KEY_ID || process.env.AWS_ACCESS_KEY_ID_2,
+        secretAccessKey: process.env.UNIFIED_AWS_SECRET_ACCESS_KEY || process.env.AWS_SECRET_ACCESS_KEY_2,
+        defaultRegion: process.env.UNIFIED_AWS_REGION || 'us-east-1'
+      }
+    };
+
+    // Validate that both accounts are configured
+    Object.keys(this.accounts).forEach(accountKey => {
+      const account = this.accounts[accountKey];
+      if (!account.accessKeyId || !account.secretAccessKey) {
+        console.error(`ERROR: ${account.name} account credentials not configured!`);
+        process.exit(1);
+      }
+    });
 
     // Disable all AWS credential providers except explicit credentials
     AWS.config.credentials = null;
     AWS.config.credentialProvider = null;
 
-    // Create explicit credentials from .env file
-    this.awsCredentials = new AWS.Credentials({
-      accessKeyId: process.env.AWS_ACCESS_KEY_ID,
-      secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY
+    // Store credentials for each account
+    this.accountCredentials = {};
+    Object.keys(this.accounts).forEach(accountKey => {
+      const account = this.accounts[accountKey];
+      this.accountCredentials[accountKey] = new AWS.Credentials({
+        accessKeyId: account.accessKeyId,
+        secretAccessKey: account.secretAccessKey
+      });
     });
 
-    // Configure AWS with ONLY explicit credentials from .env file
+    // Configure AWS with default region
     AWS.config.update({
       region: process.env.AWS_REGION || 'us-east-1',
-      credentials: this.awsCredentials,
       maxRetries: 3,
       retryDelayOptions: {
         customBackoff: function(retryCount) {
           return Math.pow(2, retryCount) * 100;
         }
-      },
-      // Explicitly disable credential providers
-      credentialProvider: new AWS.CredentialProviderChain([
-        function() { return this.awsCredentials; }.bind(this)
-      ])
+      }
     });
 
-    console.log('AWS Multi-Region Configuration:');
-    console.log('- Using EXPLICIT credentials from .env file (no IAM role fallback)');
-    console.log('- Region:', process.env.AWS_REGION || 'us-east-1');
-    console.log('- Access Key ID:', process.env.AWS_ACCESS_KEY_ID ? process.env.AWS_ACCESS_KEY_ID.substring(0, 10) + '...' : 'NOT SET');
-    console.log('- Secret Key:', process.env.AWS_SECRET_ACCESS_KEY ? 'SET' : 'NOT SET');
+    console.log('AWS Multi-Account Multi-Region Configuration:');
+    console.log('- Configured Accounts:', Object.keys(this.accounts).map(key => this.accounts[key].name).join(', '));
+    console.log('- Default Region:', process.env.AWS_REGION || 'us-east-1');
+    Object.keys(this.accounts).forEach(accountKey => {
+      const account = this.accounts[accountKey];
+      console.log(`- ${account.name} Access Key: ${account.accessKeyId.substring(0, 10)}...`);
+    });
 
     // Connection pooling configuration
     this.httpOptions = {
@@ -68,16 +87,98 @@ class MultiRegionAWSService {
     this.batchSize = parseInt(process.env.BATCH_SIZE) || 30; // Smaller batches for multi-region
     this.maxInstances = parseInt(process.env.MAX_INSTANCES) || 500;
     
-    // Region management
+    // Multi-account region management
     this.enabledRegions = new Set();
-    this.regionClients = new Map(); // EC2 clients per region
-    this.regionCloudWatchClients = new Map(); // CloudWatch clients per region
+    this.accountRegionClients = new Map(); // EC2 clients per account per region
+    this.accountRegionCloudWatchClients = new Map(); // CloudWatch clients per account per region
+    this.accountRegionSSMClients = new Map(); // SSM clients per account per region
     
-    console.log('Multi-Region AWS Service initialized with:');
+    // Initialize client maps for each account
+    Object.keys(this.accounts).forEach(accountKey => {
+      this.accountRegionClients.set(accountKey, new Map());
+      this.accountRegionCloudWatchClients.set(accountKey, new Map());
+      this.accountRegionSSMClients.set(accountKey, new Map());
+    });
+    
+    console.log('Multi-Account Multi-Region AWS Service initialized with:');
+    console.log(`- Accounts: ${Object.keys(this.accounts).length}`);
     console.log(`- Max Concurrent Requests: ${this.maxConcurrentRequests}`);
     console.log(`- Batch Size: ${this.batchSize}`);
     console.log(`- Max Instances: ${this.maxInstances}`);
     console.log(`- Base Region: ${process.env.AWS_REGION || 'us-east-1'}`);
+  }
+
+  // Get available accounts
+  getAccounts() {
+    return Object.keys(this.accounts).map(key => ({
+      key: key,
+      name: this.accounts[key].name,
+      defaultRegion: this.accounts[key].defaultRegion
+    }));
+  }
+
+  // Get account info by key
+  getAccount(accountKey) {
+    return this.accounts[accountKey] ? {
+      key: accountKey,
+      name: this.accounts[accountKey].name,
+      defaultRegion: this.accounts[accountKey].defaultRegion
+    } : null;
+  }
+
+  // Create EC2 client for specific account and region
+  getEC2Client(accountKey, region) {
+    const clientKey = `${accountKey}-${region}`;
+    const accountClients = this.accountRegionClients.get(accountKey);
+    
+    if (!accountClients.has(region)) {
+      const credentials = this.accountCredentials[accountKey];
+      const client = new AWS.EC2({
+        region: region,
+        credentials: credentials,
+        httpOptions: this.httpOptions
+      });
+      accountClients.set(region, client);
+      console.log(`Created EC2 client for ${this.accounts[accountKey].name} in ${region}`);
+    }
+    
+    return accountClients.get(region);
+  }
+
+  // Create CloudWatch client for specific account and region
+  getCloudWatchClient(accountKey, region) {
+    const accountClients = this.accountRegionCloudWatchClients.get(accountKey);
+    
+    if (!accountClients.has(region)) {
+      const credentials = this.accountCredentials[accountKey];
+      const client = new AWS.CloudWatch({
+        region: region,
+        credentials: credentials,
+        httpOptions: this.httpOptions
+      });
+      accountClients.set(region, client);
+      console.log(`Created CloudWatch client for ${this.accounts[accountKey].name} in ${region}`);
+    }
+    
+    return accountClients.get(region);
+  }
+
+  // Create SSM client for specific account and region  
+  getSSMClient(accountKey, region) {
+    const accountClients = this.accountRegionSSMClients.get(accountKey);
+    
+    if (!accountClients.has(region)) {
+      const credentials = this.accountCredentials[accountKey];
+      const client = new AWS.SSM({
+        region: region,
+        credentials: credentials,
+        httpOptions: this.httpOptions
+      });
+      accountClients.set(region, client);
+      console.log(`Created SSM client for ${this.accounts[accountKey].name} in ${region}`);
+    }
+    
+    return accountClients.get(region);
   }
 
   // Get all available AWS regions
@@ -92,28 +193,17 @@ class MultiRegionAWSService {
 
     try {
       console.log('Fetching available AWS regions...');
-      const ec2 = new AWS.EC2({ region: 'us-east-1', httpOptions: this.httpOptions });
+      // Use first account to discover regions
+      const firstAccountKey = Object.keys(this.accounts)[0];
+      const ec2 = this.getEC2Client(firstAccountKey, 'us-east-1');
       const data = await ec2.describeRegions().promise();
       
+      // Get all regions without filtering to ensure we don't miss any instances
       const regions = data.Regions
         .map(region => region.RegionName)
-        .filter(region => {
-          // Filter out regions that are commonly restricted or not needed
-          const excludeRegions = [
-            'ap-northeast-3', // Osaka (limited availability)
-            'me-south-1',     // Bahrain (opt-in required)
-            'af-south-1',     // Cape Town (opt-in required)
-            'eu-south-1',     // Milan (opt-in required)
-            'ap-southeast-3', // Jakarta (opt-in required)
-            'me-central-1',   // UAE (opt-in required)
-            'ap-south-2',     // Hyderabad (opt-in required)
-            'eu-south-2',     // Spain (opt-in required)
-            'eu-central-2',   // Zurich (opt-in required)
-            'ap-southeast-4'  // Melbourne (opt-in required)
-          ];
-          return !excludeRegions.includes(region);
-        })
         .sort();
+      
+      console.log('Scanning ALL AWS regions without exclusions');
 
       console.log(`Found ${regions.length} available regions:`, regions.join(', '));
       this.regionsCache.set(cacheKey, regions);
@@ -188,13 +278,15 @@ class MultiRegionAWSService {
         activeRegions.push(baseRegion);
       }
 
-      this.enabledRegions = new Set(activeRegions);
-      console.log(`Active regions detected: ${activeRegions.join(', ')}`);
+      // Use ALL available regions to ensure we don't miss any instances
+      const allAvailableRegions = await this.getAvailableRegions();
+      this.enabledRegions = new Set(allAvailableRegions);
+      console.log(`Using ALL ${allAvailableRegions.length} available regions: ${allAvailableRegions.join(', ')}`);
       
-      // Initialize clients for active regions
-      this.initializeRegionClients(activeRegions);
+      // Initialize clients for all regions
+      this.initializeRegionClients(allAvailableRegions);
       
-      return activeRegions;
+      return allAvailableRegions;
     } catch (error) {
       console.error('Error detecting active regions:', error);
       // Fallback to base region
@@ -205,25 +297,173 @@ class MultiRegionAWSService {
     }
   }
 
-  // Initialize EC2 and CloudWatch clients for each region
+  // Initialize EC2, CloudWatch, and SSM clients for each account and region
   initializeRegionClients(regions) {
-    console.log('Initializing region clients...');
+    console.log('Initializing multi-account region clients...');
     
-    regions.forEach(region => {
-      if (!this.regionClients.has(region)) {
-        this.regionClients.set(region, new AWS.EC2({
-          region,
-          httpOptions: this.httpOptions,
-          credentials: this.awsCredentials
-        }));
-        this.regionCloudWatchClients.set(region, new AWS.CloudWatch({
-          region,
-          httpOptions: this.httpOptions,
-          credentials: this.awsCredentials
-        }));
-        console.log(`✓ Initialized clients for region ${region}`);
-      }
+    // Initialize clients for all account/region combinations
+    Object.keys(this.accounts).forEach(accountKey => {
+      regions.forEach(region => {
+        const accountClients = this.accountRegionClients.get(accountKey);
+        const cloudwatchClients = this.accountRegionCloudWatchClients.get(accountKey);
+        const ssmClients = this.accountRegionSSMClients.get(accountKey);
+        
+        if (!accountClients.has(region)) {
+          const credentials = this.accountCredentials[accountKey];
+          
+          // Create clients for this account/region
+          accountClients.set(region, new AWS.EC2({
+            region,
+            httpOptions: this.httpOptions,
+            credentials: credentials
+          }));
+          
+          cloudwatchClients.set(region, new AWS.CloudWatch({
+            region,
+            httpOptions: this.httpOptions,
+            credentials: credentials
+          }));
+          
+          ssmClients.set(region, new AWS.SSM({
+            region,
+            httpOptions: this.httpOptions,
+            credentials: credentials
+          }));
+          
+          console.log(`✓ Initialized clients for ${this.accounts[accountKey].name}/${region}`);
+        }
+      });
     });
+  }
+
+  // Get accurate SSM metrics (based on aws_fixed_reporter.py)
+  async getSSMMetrics(accountKey, region, instanceId) {
+    try {
+      const ssm = this.getSSMClient(accountKey, region);
+      
+      // Commands from aws_fixed_reporter.py - fixed and reliable
+      const commands = [
+        // Memory usage - simple and reliable
+        "free | grep '^Mem:' | awk '{printf \"%.2f\\n\", ($3/$2) * 100.0}'",
+        // Disk usage - one filesystem per line
+        "df | grep -E '^/dev/' | awk '{print $1 \":\" $5}' | head -5",
+        // Average disk usage across all filesystems
+        "df | grep -E '^/dev/' | awk '{sum += $5; count++} END {if(count > 0) printf \"%.2f\\n\", sum/count; else print \"0\\n\"}'",
+        // Check for EFS mounts and get details
+        "df -hT | grep efs | awk '{print $1\":\"$3\":\"$4\":\"$6}' | head -3 || echo 'NO_EFS'"
+      ];
+
+      console.log(`Collecting SSM metrics for ${this.accounts[accountKey].name}/${region}/${instanceId}`);
+      
+      const response = await ssm.sendCommand({
+        InstanceIds: [instanceId],
+        DocumentName: "AWS-RunShellScript",
+        Parameters: { commands: commands },
+        TimeoutSeconds: 45
+      }).promise();
+
+      const commandId = response.Command.CommandId;
+      
+      // Wait for command completion with timeout
+      let attempts = 0;
+      const maxAttempts = 15; // 45 seconds total
+      
+      while (attempts < maxAttempts) {
+        await new Promise(resolve => setTimeout(resolve, 3000));
+        attempts++;
+        
+        try {
+          const output = await ssm.getCommandInvocation({
+            CommandId: commandId,
+            InstanceId: instanceId
+          }).promise();
+          
+          if (output.Status === 'Success') {
+            const stdout = output.StandardOutputContent.trim();
+            if (stdout) {
+              const lines = stdout.split('\n').map(line => line.trim()).filter(line => line);
+              
+              const metrics = {
+                memory_percent: 0,
+                disk_usage_avg: 0,
+                disk_details: [],
+                efs_attached: false,
+                success: false,
+                collection_method: 'SSM'
+              };
+              
+              if (lines.length >= 3) {
+                try {
+                  // Parse memory usage (first line)
+                  const memory_val = parseFloat(lines[0]);
+                  if (!isNaN(memory_val) && memory_val >= 0 && memory_val <= 100) {
+                    metrics.memory_percent = memory_val;
+                    metrics.success = true;
+                  }
+                  
+                  // Parse disk details (middle lines)
+                  const disk_usages = [];
+                  const end_index = lines.length - 2;
+                  for (let i = 1; i < end_index; i++) {
+                    if (lines[i].includes(':')) {
+                      const [filesystem, percent_str] = lines[i].split(':', 2);
+                      const percent = parseFloat(percent_str.replace('%', ''));
+                      if (!isNaN(percent)) {
+                        metrics.disk_details.push({
+                          filesystem: filesystem.trim(),
+                          usage_percent: percent
+                        });
+                        disk_usages.push(percent);
+                      }
+                    }
+                  }
+                  
+                  // Parse average disk usage (second to last line)
+                  if (lines.length > 2) {
+                    const avg_disk = parseFloat(lines[lines.length - 2]);
+                    if (!isNaN(avg_disk) && avg_disk >= 0 && avg_disk <= 100) {
+                      metrics.disk_usage_avg = avg_disk;
+                    } else if (disk_usages.length > 0) {
+                      metrics.disk_usage_avg = disk_usages.reduce((a, b) => a + b, 0) / disk_usages.length;
+                    }
+                  }
+                  
+                  // Check for EFS (last line)
+                  if (lines.length > 3) {
+                    const efs_line = lines[lines.length - 1];
+                    if (efs_line && efs_line !== 'NO_EFS') {
+                      metrics.efs_attached = true;
+                    }
+                  }
+                  
+                  console.log(`✓ SSM success for ${instanceId}: Memory=${metrics.memory_percent.toFixed(2)}%, Disk=${metrics.disk_usage_avg.toFixed(2)}%`);
+                  return metrics;
+                } catch (parseError) {
+                  console.log(`⚠ SSM parse error for ${instanceId}: ${parseError.message}`);
+                }
+              }
+            }
+          } else if (output.Status === 'Failed') {
+            console.log(`⚠ SSM failed for ${instanceId}: ${output.StandardErrorContent || 'Unknown error'}`);
+            break;
+          }
+        } catch (invocationError) {
+          console.log(`⚠ SSM invocation error for ${instanceId}: ${invocationError.message}`);
+        }
+      }
+    } catch (ssmError) {
+      console.log(`⚠ SSM command error for ${instanceId}: ${ssmError.message}`);
+    }
+    
+    // Return failed metrics
+    return {
+      memory_percent: 0,
+      disk_usage_avg: 0,
+      disk_details: [],
+      efs_attached: false,
+      success: false,
+      collection_method: 'SSM_Failed'
+    };
   }
 
   // Rate-limited request executor
@@ -271,14 +511,14 @@ class MultiRegionAWSService {
     }
   }
 
-  // Get EC2 instances from all regions
-  async getEC2Instances(useCache = true) {
-    const cacheKey = 'all_instances_multi_region';
+  // Get EC2 instances from all accounts and regions
+  async getEC2Instances(useCache = true, accountFilter = null, regionFilter = null) {
+    const cacheKey = `all_instances_${accountFilter || 'all'}_${regionFilter || 'all'}`;
     
     if (useCache) {
       const cached = this.instanceCache.get(cacheKey);
       if (cached) {
-        console.log(`Retrieved ${cached.length} instances from cache (multi-region)`);
+        console.log(`Retrieved ${cached.length} instances from cache (${accountFilter || 'all accounts'}/${regionFilter || 'all regions'})`);
         return cached;
       }
     }
@@ -289,51 +529,38 @@ class MultiRegionAWSService {
         await this.detectActiveRegions();
       }
 
-      console.log(`Fetching EC2 instances from ${this.enabledRegions.size} regions...`);
+      // Determine which accounts to query
+      const accountsToQuery = accountFilter ? [accountFilter] : Object.keys(this.accounts);
+      const regionsToQuery = regionFilter ? [regionFilter] : Array.from(this.enabledRegions);
+
+      console.log(`Fetching EC2 instances from ${accountsToQuery.length} accounts and ${regionsToQuery.length} regions...`);
       const allInstances = [];
-      const regionResults = [];
+      const accountRegionResults = [];
 
-      // Fetch instances from all regions in parallel
-      const regionPromises = Array.from(this.enabledRegions).map(async (region) => {
-        try {
-          console.log(`Fetching instances from region: ${region}`);
-          const regionInstances = await this.getRegionInstances(region);
-          
-          // Add region information to each instance
-          const enrichedInstances = regionInstances.map(instance => ({
-            ...instance,
-            Region: region,
-            RegionName: this.getRegionDisplayName(region)
-          }));
+      // Fetch instances from all account/region combinations in parallel
+      const accountRegionPromises = [];
+      
+      for (const accountKey of accountsToQuery) {
+        for (const region of regionsToQuery) {
+          accountRegionPromises.push(this.getAccountRegionInstances(accountKey, region));
+        }
+      }
 
-          regionResults.push({
-            region: region,
-            count: enrichedInstances.length,
-            instances: enrichedInstances
-          });
-
-          return enrichedInstances;
-        } catch (error) {
-          console.error(`Error fetching instances from region ${region}:`, error.message);
-          regionResults.push({
-            region: region,
-            count: 0,
-            instances: [],
-            error: error.message
-          });
-          return [];
+      const accountRegionInstancesResults = await Promise.all(accountRegionPromises);
+      
+      // Collect all instances and results
+      accountRegionInstancesResults.forEach(result => {
+        if (result && result.instances && result.instances.length > 0) {
+          allInstances.push(...result.instances);
+          accountRegionResults.push(result);
         }
       });
 
-      const regionInstanceArrays = await Promise.all(regionPromises);
-      
-      // Flatten all instances into single array
-      regionInstanceArrays.forEach(instances => {
-        allInstances.push(...instances);
-      });
-
-      // Sort instances by region and name for consistent ordering
+      // Sort instances by account, region and name for consistent ordering
       allInstances.sort((a, b) => {
+        if (a.AccountName !== b.AccountName) {
+          return a.AccountName.localeCompare(b.AccountName);
+        }
         if (a.Region !== b.Region) {
           return a.Region.localeCompare(b.Region);
         }
@@ -342,90 +569,137 @@ class MultiRegionAWSService {
         return aName.localeCompare(bName);
       });
 
-      console.log(`Total instances fetched from all regions: ${allInstances.length}`);
-      regionResults.forEach(result => {
+      console.log(`Total instances fetched from all accounts/regions: ${allInstances.length}`);
+      accountRegionResults.forEach(result => {
         if (result.error) {
-          console.log(`  ${result.region}: ERROR - ${result.error}`);
+          console.log(`  ${result.account}/${result.region}: ERROR - ${result.error}`);
         } else {
-          console.log(`  ${result.region}: ${result.count} instances`);
+          console.log(`  ${result.account}/${result.region}: ${result.count} instances`);
         }
       });
 
       this.instanceCache.set(cacheKey, allInstances);
       return allInstances;
     } catch (error) {
-      console.error('Error fetching EC2 instances from multiple regions:', error);
+      console.error('Error fetching EC2 instances from multiple accounts/regions:', error);
       throw error;
     }
   }
 
-  // Get instances from a specific region
-  async getRegionInstances(region) {
-    const ec2Client = this.regionClients.get(region);
-    if (!ec2Client) {
-      throw new Error(`No EC2 client initialized for region ${region}`);
-    }
+  // Get instances from a specific account and region
+  async getAccountRegionInstances(accountKey, region) {
+    try {
+      console.log(`Fetching instances from ${this.accounts[accountKey].name}/${region}...`);
+      const ec2 = this.getEC2Client(accountKey, region);
+      const cloudwatch = this.getCloudWatchClient(accountKey, region);
 
-    const instances = [];
-    let nextToken = null;
-    let pageCount = 0;
-
-    do {
-      const requestFn = async () => {
-        const params = {
-          MaxResults: 100,
-          ...(nextToken && { NextToken: nextToken })
-        };
-        return ec2Client.describeInstances(params).promise();
-      };
-
-      const data = await this.executeWithRateLimit(requestFn);
-      pageCount++;
+      const data = await ec2.describeInstances().promise();
+      const instances = [];
       
-      if (data.Reservations && data.Reservations.length > 0) {
-        data.Reservations.forEach(reservation => {
-          reservation.Instances.forEach(instance => {
-            instances.push({
-              InstanceId: instance.InstanceId,
-              InstanceType: instance.InstanceType,
-              State: instance.State,
-              PublicIpAddress: instance.PublicIpAddress,
-              PrivateIpAddress: instance.PrivateIpAddress,
-              LaunchTime: instance.LaunchTime,
-              Tags: instance.Tags || [],
-              SecurityGroups: instance.SecurityGroups || [],
-              VpcId: instance.VpcId,
-              SubnetId: instance.SubnetId,
-              AvailabilityZone: instance.Placement?.AvailabilityZone,
-              KeyName: instance.KeyName,
-              Platform: instance.Platform,
-              Architecture: instance.Architecture,
-              // Add computed fields for sorting/filtering
-              Name: instance.Tags?.find(tag => tag.Key === 'Name')?.Value || instance.InstanceId,
-              IsRunning: instance.State.Name === 'running'
-            });
-          });
-        });
+      for (const reservation of data.Reservations) {
+        for (const instance of reservation.Instances) {
+          // Skip terminated instances
+          if (instance.State.Name === 'terminated') continue;
+          
+          // Get SSM metrics for accurate memory and disk usage
+          let ssmMetrics = null;
+          if (instance.State.Name === 'running') {
+            try {
+              ssmMetrics = await this.getSSMMetrics(accountKey, region, instance.InstanceId);
+            } catch (ssmError) {
+              console.log(`SSM failed for ${instance.InstanceId}: ${ssmError.message}`);
+            }
+          }
+
+          // Get CloudWatch CPU metrics
+          let cpuUtilization = 0;
+          try {
+            const cpuData = await cloudwatch.getMetricStatistics({
+              Namespace: 'AWS/EC2',
+              MetricName: 'CPUUtilization',
+              Dimensions: [{ Name: 'InstanceId', Value: instance.InstanceId }],
+              StartTime: new Date(Date.now() - 5 * 60 * 1000), // Last 5 minutes
+              EndTime: new Date(),
+              Period: 300,
+              Statistics: ['Average']
+            }).promise();
+
+            if (cpuData.Datapoints && cpuData.Datapoints.length > 0) {
+              cpuUtilization = cpuData.Datapoints[0].Average;
+            }
+          } catch (cwError) {
+            console.log(`CloudWatch CPU failed for ${instance.InstanceId}: ${cwError.message}`);
+          }
+          
+          // Determine memory usage
+          let memoryUtilization = 0;
+          let diskUtilization = 0;
+          let collectionMethod = 'CloudWatch Only';
+          
+          if (ssmMetrics && ssmMetrics.success) {
+            memoryUtilization = ssmMetrics.memory_percent;
+            diskUtilization = ssmMetrics.disk_usage_avg;
+            collectionMethod = 'SSM + CloudWatch';
+          } else {
+            // Fallback estimation based on CPU (conservative)
+            if (cpuUtilization > 70) {
+              memoryUtilization = Math.min(80, cpuUtilization * 1.1);
+            } else if (cpuUtilization > 30) {
+              memoryUtilization = Math.min(60, cpuUtilization * 1.3);
+            } else {
+              memoryUtilization = 25;
+            }
+            collectionMethod = 'CloudWatch + Estimated';
+          }
+
+          // Add account and enhanced region information
+          const enrichedInstance = {
+            ...instance,
+            AccountKey: accountKey,
+            AccountName: this.accounts[accountKey].name,
+            Region: region,
+            RegionName: this.getRegionDisplayName(region),
+            CPUUtilization: Math.round(cpuUtilization * 100) / 100,
+            MemoryUtilization: Math.round(memoryUtilization * 100) / 100,
+            DiskUtilization: Math.round(diskUtilization * 100) / 100,
+            CollectionMethod: collectionMethod,
+            SSMSuccess: ssmMetrics ? ssmMetrics.success : false,
+            DiskDetails: ssmMetrics ? ssmMetrics.disk_details : [],
+            EFSAttached: ssmMetrics ? ssmMetrics.efs_attached : false
+          };
+
+          instances.push(enrichedInstance);
+        }
       }
 
-      nextToken = data.NextToken;
-
-      // Safety limit per region
-      if (instances.length >= (this.maxInstances / this.enabledRegions.size)) {
-        console.log(`Reached per-region instance limit for ${region}`);
-        break;
-      }
-
-    } while (nextToken && pageCount < 20); // Max 20 pages per region
-
-    return instances;
+      return {
+        account: this.accounts[accountKey].name,
+        accountKey: accountKey,
+        region: region,
+        count: instances.length,
+        instances: instances
+      };
+    } catch (error) {
+      console.error(`Error fetching instances from ${this.accounts[accountKey].name}/${region}:`, error.message);
+      return {
+        account: this.accounts[accountKey].name,
+        accountKey: accountKey,
+        region: region,
+        count: 0,
+        instances: [],
+        error: error.message
+      };
+    }
   }
 
-  // Get CloudWatch metrics for instances (with region support)
-  async getInstanceMetrics(instanceId, region) {
-    const cloudwatchClient = this.regionCloudWatchClients.get(region);
+  // Get instances from a specific region
+
+  // Get CloudWatch metrics for instances (with multi-account region support)
+  async getInstanceMetrics(instanceId, region, accountKey = 'bamkom') {
+    // Default to first account if not specified
+    const cloudwatchClient = this.getCloudWatchClient(accountKey, region);
     if (!cloudwatchClient) {
-      console.error(`No CloudWatch client for region ${region}`);
+      console.error(`No CloudWatch client for ${accountKey}/${region}`);
       return {};
     }
 
@@ -514,10 +788,16 @@ class MultiRegionAWSService {
 
   // Get region statistics
   getRegionStats() {
+    let totalClients = 0;
+    this.accountRegionClients.forEach(accountClients => {
+      totalClients += accountClients.size;
+    });
+    
     return {
       totalRegions: this.enabledRegions.size,
       enabledRegions: Array.from(this.enabledRegions),
-      regionClients: this.regionClients.size,
+      totalAccountRegionClients: totalClients,
+      accounts: Object.keys(this.accounts),
       lastRegionDetection: this.regionsCache.get('last_detection') || null
     };
   }
@@ -527,8 +807,11 @@ class MultiRegionAWSService {
     console.log('Forcing refresh of active regions...');
     this.regionsCache.flushAll();
     this.enabledRegions.clear();
-    this.regionClients.clear();
-    this.regionCloudWatchClients.clear();
+    
+    // Clear all account region clients
+    this.accountRegionClients.forEach(accountClients => accountClients.clear());
+    this.accountRegionCloudWatchClients.forEach(accountClients => accountClients.clear());
+    this.accountRegionSSMClients.forEach(accountClients => accountClients.clear());
     
     const activeRegions = await this.detectActiveRegions();
     this.regionsCache.set('last_detection', new Date());
