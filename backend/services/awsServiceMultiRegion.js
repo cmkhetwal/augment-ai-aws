@@ -89,10 +89,10 @@ class MultiRegionAWSService {
       })
     };
 
-    // Caching - Reduced instance cache TTL to prevent stale memory data
-    this.instanceCache = new NodeCache({ stdTTL: 60, checkperiod: 30 }); // 1 min TTL (reduced from 5 min)
-    this.metricsCache = new NodeCache({ stdTTL: 60, checkperiod: 30 }); // 1 min TTL
-    this.regionsCache = new NodeCache({ stdTTL: 3600, checkperiod: 300 }); // 1 hour TTL for regions
+    // Caching - Disabled to show real-time data (no cached data)
+    this.instanceCache = new NodeCache({ stdTTL: 0, checkperiod: 30 }); // No caching - real-time data
+    this.metricsCache = new NodeCache({ stdTTL: 0, checkperiod: 30 }); // No caching - real-time data
+    this.regionsCache = new NodeCache({ stdTTL: 300, checkperiod: 60 }); // 5 min TTL for regions only
     
     // Rate limiting
     this.requestQueue = [];
@@ -534,7 +534,7 @@ class MultiRegionAWSService {
   }
 
   // Get EC2 instances from all accounts and regions
-  async getEC2Instances(useCache = true, accountFilter = null, regionFilter = null) {
+  async getEC2Instances(useCache = false, accountFilter = null, regionFilter = null) {
     const cacheKey = `all_instances_${accountFilter || 'all'}_${regionFilter || 'all'}`;
     
     if (useCache) {
@@ -658,20 +658,22 @@ class MultiRegionAWSService {
           let diskUtilization = 0;
           let collectionMethod = 'CloudWatch Only';
           
-          if (ssmMetrics && ssmMetrics.success) {
+          if (ssmMetrics && ssmMetrics.memory_percent !== undefined && ssmMetrics.memory_percent >= 0) {
             memoryUtilization = ssmMetrics.memory_percent;
-            diskUtilization = ssmMetrics.disk_usage_avg;
+            diskUtilization = ssmMetrics.disk_usage_avg || 0;
             collectionMethod = 'SSM + CloudWatch';
+            console.log(`Using SSM memory data for ${instance.InstanceId}: ${memoryUtilization.toFixed(2)}%`);
           } else {
-            // Fallback estimation based on CPU (conservative)
+            // Only use fallback estimation if SSM completely fails - use lower estimates
             if (cpuUtilization > 70) {
-              memoryUtilization = Math.min(80, cpuUtilization * 1.1);
+              memoryUtilization = Math.min(50, cpuUtilization * 0.7);
             } else if (cpuUtilization > 30) {
-              memoryUtilization = Math.min(60, cpuUtilization * 1.3);
+              memoryUtilization = Math.min(35, cpuUtilization * 0.8);
             } else {
-              memoryUtilization = 25;
+              memoryUtilization = 15;
             }
             collectionMethod = 'CloudWatch + Estimated';
+            console.log(`Using fallback memory estimation for ${instance.InstanceId}: ${memoryUtilization.toFixed(2)}%`);
           }
 
           // Add account and enhanced region information
