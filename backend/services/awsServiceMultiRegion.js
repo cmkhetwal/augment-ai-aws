@@ -19,12 +19,16 @@ class MultiRegionAWSService {
       }
     };
 
-    // Validate that both accounts are configured
+    // Check if AWS credentials are configured - warn but don't exit if missing
+    this.hasValidCredentials = true;
     Object.keys(this.accounts).forEach(accountKey => {
       const account = this.accounts[accountKey];
       if (!account.accessKeyId || !account.secretAccessKey) {
-        console.error(`ERROR: ${account.name} account credentials not configured!`);
-        process.exit(1);
+        console.warn(`WARNING: ${account.name} account credentials not configured - AWS operations will be disabled!`);
+        this.hasValidCredentials = false;
+        account.disabled = true;
+      } else {
+        account.disabled = false;
       }
     });
 
@@ -32,14 +36,16 @@ class MultiRegionAWSService {
     AWS.config.credentials = null;
     AWS.config.credentialProvider = null;
 
-    // Store credentials for each account
+    // Store credentials for each account (only for accounts with valid credentials)
     this.accountCredentials = {};
     Object.keys(this.accounts).forEach(accountKey => {
       const account = this.accounts[accountKey];
-      this.accountCredentials[accountKey] = new AWS.Credentials({
-        accessKeyId: account.accessKeyId,
-        secretAccessKey: account.secretAccessKey
-      });
+      if (!account.disabled) {
+        this.accountCredentials[accountKey] = new AWS.Credentials({
+          accessKeyId: account.accessKeyId,
+          secretAccessKey: account.secretAccessKey
+        });
+      }
     });
 
     // Configure AWS with default region
@@ -54,12 +60,23 @@ class MultiRegionAWSService {
     });
 
     console.log('AWS Multi-Account Multi-Region Configuration:');
-    console.log('- Configured Accounts:', Object.keys(this.accounts).map(key => this.accounts[key].name).join(', '));
     console.log('- Default Region:', process.env.AWS_REGION || 'us-east-1');
-    Object.keys(this.accounts).forEach(accountKey => {
-      const account = this.accounts[accountKey];
-      console.log(`- ${account.name} Access Key: ${account.accessKeyId.substring(0, 10)}...`);
-    });
+    console.log('- Has Valid Credentials:', this.hasValidCredentials);
+    
+    const enabledAccounts = Object.keys(this.accounts).filter(key => !this.accounts[key].disabled);
+    const disabledAccounts = Object.keys(this.accounts).filter(key => this.accounts[key].disabled);
+    
+    if (enabledAccounts.length > 0) {
+      console.log('- Enabled Accounts:', enabledAccounts.map(key => this.accounts[key].name).join(', '));
+      enabledAccounts.forEach(accountKey => {
+        const account = this.accounts[accountKey];
+        console.log(`  - ${account.name} Access Key: ${account.accessKeyId.substring(0, 10)}...`);
+      });
+    }
+    
+    if (disabledAccounts.length > 0) {
+      console.log('- Disabled Accounts (no credentials):', disabledAccounts.map(key => this.accounts[key].name).join(', '));
+    }
 
     // Connection pooling configuration
     this.httpOptions = {
@@ -106,6 +123,11 @@ class MultiRegionAWSService {
     console.log(`- Batch Size: ${this.batchSize}`);
     console.log(`- Max Instances: ${this.maxInstances}`);
     console.log(`- Base Region: ${process.env.AWS_REGION || 'us-east-1'}`);
+  }
+
+  // Check if AWS operations are available
+  isAwsAvailable() {
+    return this.hasValidCredentials;
   }
 
   // Get available accounts
