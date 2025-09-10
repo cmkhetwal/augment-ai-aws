@@ -218,10 +218,54 @@ class MetricsService {
   }
 
   async getMemoryMetricsFromInstance(instanceId) {
+    // Instead of random fallback, try to get real memory data via SSM
+    try {
+      // Try to get memory via SSM using the same free command
+      const command = "free | grep '^Mem:' | awk '{printf \"%.2f\\n\", ($3/$2) * 100.0}'";
+      
+      const response = await this.ssm.sendCommand({
+        InstanceIds: [instanceId],
+        DocumentName: "AWS-RunShellScript", 
+        Parameters: { commands: [command] },
+        TimeoutSeconds: 30
+      }).promise();
+
+      const commandId = response.Command.CommandId;
+      
+      // Wait for command completion
+      let attempts = 0;
+      while (attempts < 10) {
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        attempts++;
+        
+        const output = await this.ssm.getCommandInvocation({
+          CommandId: commandId,
+          InstanceId: instanceId
+        }).promise();
+        
+        if (output.Status === 'Success') {
+          const memoryPercent = parseFloat(output.StandardOutputContent.trim());
+          if (!isNaN(memoryPercent)) {
+            return {
+              current: memoryPercent,
+              max: memoryPercent,
+              average: memoryPercent,
+              dataPoints: []
+            };
+          }
+        } else if (output.Status === 'Failed') {
+          break;
+        }
+      }
+    } catch (error) {
+      console.log(`SSM fallback failed for ${instanceId}: ${error.message}`);
+    }
+    
+    // If SSM completely fails, return null to indicate no data
     return {
-      current: Math.random() * 80 + 10,
-      max: Math.random() * 20 + 80,
-      average: Math.random() * 40 + 30,
+      current: 0,
+      max: 0, 
+      average: 0,
       dataPoints: []
     };
   }

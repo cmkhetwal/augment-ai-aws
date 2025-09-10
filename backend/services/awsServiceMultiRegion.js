@@ -89,8 +89,8 @@ class MultiRegionAWSService {
       })
     };
 
-    // Caching
-    this.instanceCache = new NodeCache({ stdTTL: 300, checkperiod: 60 }); // 5 min TTL
+    // Caching - Reduced instance cache TTL to prevent stale memory data
+    this.instanceCache = new NodeCache({ stdTTL: 60, checkperiod: 30 }); // 1 min TTL (reduced from 5 min)
     this.metricsCache = new NodeCache({ stdTTL: 60, checkperiod: 30 }); // 1 min TTL
     this.regionsCache = new NodeCache({ stdTTL: 3600, checkperiod: 300 }); // 1 hour TTL for regions
     

@@ -162,13 +162,14 @@ app.get('/api/instances', authService.authenticateToken.bind(authService), async
       sortOrder = 'asc',
       search = '',
       includeMetrics = 'false',
-      region = 'all'
+      region = 'all',
+      useCache = 'true'
     } = req.query;
 
-    console.log(`Fetching instances - Page: ${page}, Size: ${pageSize}, Sort: ${sortBy} ${sortOrder}, Search: "${search}", Region: ${region}`);
+    console.log(`Fetching instances - Page: ${page}, Size: ${pageSize}, Sort: ${sortBy} ${sortOrder}, Search: "${search}", Region: ${region}, UseCache: ${useCache}`);
 
-    // Get all instances from all regions
-    let allInstances = await awsService.getEC2Instances();
+    // Get all instances from all regions with cache control
+    let allInstances = await awsService.getEC2Instances(useCache === 'true');
     
     // Filter by region if specified
     if (region !== 'all') {
@@ -677,7 +678,8 @@ app.get('/api/ports/:instanceId', authService.authenticateToken.bind(authService
 async function updateInstances() {
   try {
     console.log('Updating instances...');
-    const instances = await awsService.getEC2Instances();
+    // Force fresh data collection (bypass cache) for regular updates to prevent stale memory data
+    const instances = await awsService.getEC2Instances(false);
     monitoringData.instances = instances;
     
     // Update stats

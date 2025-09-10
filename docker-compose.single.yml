@@ -15,7 +15,7 @@ services:
     restart: unless-stopped
 
   backend:
-    image: cmkh/pulsestack-single-account:backend-latest
+    image: cmkh/pulsestack-single-account:backend-fixed
     container_name: aws-monitor-backend-single
     depends_on:
       - mongodb

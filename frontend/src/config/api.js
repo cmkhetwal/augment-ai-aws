@@ -1,10 +1,14 @@
 // API Configuration - Fallback strategy for different environments
 const getApiBaseUrl = () => {
+  // In production behind Apache reverse proxy, use same origin
+  // Apache proxies /api/* to backend:3001
+  if (window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
+    return window.location.origin;
+  }
+  
+  // For local development, use port 3001
   const protocol = window.location.protocol;
   const hostname = window.location.hostname;
-  
-  // Always try the same hostname with port 3001 first
-  // This works for localhost, 127.0.0.1, and IP addresses
   return `${protocol}//${hostname}:3001`;
 };
 
